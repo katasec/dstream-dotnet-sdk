@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- NuGet metadata -->
+    <PackageId>Katasec.DStream.Providers</PackageId>
+    <Version>0.0.1-dev</Version>
+    <Authors>Ameer Deen</Authors>
+    <Company>Katasec</Company>   
+    <Description>Standard input and output providers for DStream plugins</Description>
+    <RepositoryUrl>https://github.com/katasec/Katasec.DStream.Providers</RepositoryUrl>
+    <PackageTags>dstream;plugin;providers</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>readme.md</PackageReadmeFile>
+
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\readme.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Katasec.DStream.Plugin" Version="0.0.8" />
+  </ItemGroup>
+
+</Project>

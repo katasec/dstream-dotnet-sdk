@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package plugin;
+
+option csharp_namespace = "Katasec.DStream.Proto";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  Field-schema definition
+// ──────────────────────────────────────────────────────────────────────────────
+message FieldSchema {
+  string name        = 1;    // e.g. "lock", "provider"
+  string type        = 2;    // "string", "list", "object", …
+  bool   required    = 3;
+  string description = 4;
+  repeated FieldSchema fields = 5; // populated when type == "object"
+}
+
+message GetSchemaResponse {
+  repeated FieldSchema fields = 1;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  Input/Output configuration
+// ──────────────────────────────────────────────────────────────────────────────
+message InputConfig {
+  string provider = 1;                    // Name of the input provider (e.g., "sqlserver_cdc")
+  google.protobuf.Struct config = 2;      // Provider-specific configuration
+}
+
+message OutputConfig {
+  string provider = 1;                    // Name of the output provider (e.g., "azure_servicebus_topic")
+  google.protobuf.Struct config = 2;      // Provider-specific configuration
+}
+
+message StartRequest {
+  InputConfig input = 1;                  // Input configuration
+  OutputConfig output = 2;                // Output configuration
+  google.protobuf.Struct config = 3;      // Global plugin configuration
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  Plugin RPC surface
+// ──────────────────────────────────────────────────────────────────────────────
+service Plugin {
+  rpc GetSchema (google.protobuf.Empty)  returns (GetSchemaResponse);
+  rpc Start     (StartRequest) returns (google.protobuf.Empty);
+}

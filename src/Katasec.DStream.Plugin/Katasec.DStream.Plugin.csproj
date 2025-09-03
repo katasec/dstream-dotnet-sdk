@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+  <!-- NuGet metadata -->
+    <PackageId>Katasec.DStream.Plugin</PackageId>
+    <Version>0.0.0-dev</Version> <!-- Will be overridden by publish.ps1 -->
+    <Authors>Ameer Deen</Authors>
+    <Company>Katasec</Company>   
+    <Description>.NET helper library for building DStream plugins using HashiCorp's go-plugin and gRPC. Compatible with the DStream CLI.</Description>
+    <RepositoryUrl>https://github.com/katasec/Katasec.DStream.Plugin</RepositoryUrl>
+    <PackageTags>dstream;plugin</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.31.1" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.72.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Grpc.AspNetCore" Version="2.71.0" />
+
+    <PackageReference Include="HCLog.Net" Version="0.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Protos\plugin.proto" GrpcServices="Both" />
+  </ItemGroup>
+
+
+</Project>
