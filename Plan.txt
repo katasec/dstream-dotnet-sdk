@@ -1,0 +1,582 @@
+﻿# DStream .NET SDK — Context Overview (read this first)
+
+This repo contains the .NET side of DStream: the pieces that let you build and run dataflow “workers” composed of providers (sources/sinks) and an optional transform. It works alongside a Go CLI (dstream-cli) that reads HCL, launches a host process, and manages lifecycle.
+
+What the project aims to do
+
+Provide a stable SDK (interfaces + base types) so anyone can build input and output providers in C#.
+
+Ship a default host (Bridge) that runs most tasks: it wires your chosen input→output providers in-process (no extra services).
+
+Offer a template host for teams who need custom transforms (closed-source is fine) in the same process.
+
+Keep DevOps composable: mix-and-match open-source providers via packages—no rebuilding the host.
+
+Design bias: simple first. One host process per worker. Providers run in-proc and are discovered via reflection. You can add an out-of-proc/grpc escape hatch later if absolutely needed.
+
+How the Go CLI and .NET SDK work together
+
+The Go CLI parses your HCL and uses HashiCorp go-plugin (gRPC) to start one .NET host process per task.
+
+Inside that .NET Host (from this repo):
+
+It loads the input provider (source) and output provider (sink) in-process from DLLs.
+
+If a custom transform is specified, the host runs that code between input and output.
+
+It runs the pipeline loop (read → transform? → write) with bounded buffers, retries, and acks.
+
+IPC is only CLI ↔ Host. Host ↔ Providers is in-proc, so there’s no gRPC to maintain there.
+
+HCL grammar (final)
+
+We keep it small and explicit:
+
+task "<name>" {
+  # REQUIRED: which host binary to run
+  plugin_ref = "builtin://bridge"        # default pass-through host
+            | "oci://ghcr.io/owner/image:tag"  # custom host with transform
+            | "file://../out/custom"     # local dev
+
+  input  { provider = "<key>";  config { ... } }   # e.g., "mssql.cdc", "asb.queue"
+  output { provider = "<key>";  config { ... } }   # use "null" as a terminal sink
+
+  # optional (read by custom hosts only)
+  config { ... }
+}
+
+
+No type=—every task runs a plugin host.
+
+Secrets: reference env vars from HCL (e.g., connection_string = env("ASB_CONN")). The host logs with secret redaction.
+
+Optional future: a Terraform-style required_providers {} block plus dstream init to download provider NuGets into a .dstream/providers folder the host scans. (Nice for DevOps; host code doesn’t change.)
+
+What’s in this repo
+
+Katasec.DStream.Abstractions
+Stable contracts: IInput, IOutput, Envelope, InputBase, OutputBase, and a discovery attribute:
+
+[Provider("asb.queue", Direction.Output)]
+public sealed class AsbQueueOutput : IOutput { ... }
+
+
+Katasec.DStream.Runtime
+The host orchestration: assembly scanning + keyed DI, options binding/validation, the read→write pipeline (bounded channels, retries, DLQ hooks), tracing hooks.
+
+Katasec.DStream.Host.Bridge
+The stock pass-through host. It reads HCL, discovers providers, resolves by key, and runs the pipeline. Published as a self-contained exe and an OCI image.
+
+Katasec.DStream.Host.Template
+A minimal scaffold for custom hosts (where you add your transform logic).
+
+Providers (each its own project/NuGet)
+
+…Provider.MssqlCdc ("mssql.cdc") – input
+
+…Provider.PostgresCdc ("postgres.cdc") – input
+
+…Provider.AsbQueue ("asb.queue") – output
+
+…Provider.Twilio ("twilio.whatsapp") – output
+
+…Provider.Console ("console", "null") – utilities
+
+Katasec.DStream.SDK
+A convenience meta-package that depends on Abstractions + Runtime + common providers.
+
+How providers are found (no “maps” to maintain)
+
+Providers self-identify with [Provider("<key>", Direction.Input|Output)].
+On startup, the host:
+
+Scans assemblies (its own folder and optionally .dstream/providers/**) for types with that attribute.
+
+Registers them in keyed DI under their key.
+
+Resolves the input.provider and output.provider keys from HCL via DI.
+
+No name→NuGet mapping inside the host. DevOps can swap implementations by changing which DLLs are present (or by running dstream init in the future).
+
+Data model & flow
+
+Envelope carries: Id, Type, optional Schema, optional IdempotencyKey, raw Payload, attributes, and a traceparent.
+
+Read path (inputs): IInput.ReadAsync(ctx, ct) yields envelopes (e.g., from CDC or ASB).
+
+Optional transform (custom host): mutate/validate envelope or payload.
+
+Write path (outputs): IOutput.WriteAsync(env, ctx, ct) persists/calls APIs.
+
+Reliability:
+
+At-least-once delivery: inputs commit offsets (e.g., CDC LSN) after the sink reports success.
+
+Sinks should be idempotent (e.g., use IdempotencyKey); pair with broker duplicate detection (ASB’s de-dupe window).
+
+Retries use exponential jitter; repeated failures → DLQ with context.
+
+Two common ways to use it
+A) No transform (pure bridge)
+task "cdc_sql_to_asb" {
+  plugin_ref = "builtin://bridge"
+  input  { provider = "mssql.cdc"  config { conn_string = env("MSSQL_CONN"); table = "dbo.otp_logs" } }
+  output { provider = "asb.queue"  config { connection_string = env("ASB_CONN"); queue = "otp.logs" } }
+}
+
+B) With transform (custom host in the middle)
+task "otp_logs_to_twilio_in" {
+  plugin_ref = "oci://ghcr.io/katasec/private/otp-errors-map:v1.0.0"  # your transform
+
+  # knobs only your custom host reads
+  config { filter_status = "ERROR" }
+
+  input  { provider = "asb.queue"  config { connection_string = env("ASB_CONN"); queue = "otp.logs" } }
+  output { provider = "asb.queue"  config { connection_string = env("ASB_CONN"); queue = "twilio.in" } }
+}
+
+
+Then a second task uses the bridge to send to Twilio:
+
+task "twilio_whatsapp_sink" {
+  plugin_ref = "builtin://bridge"
+  input  { provider = "asb.queue"       config { connection_string = env("ASB_CONN"); queue = "twilio.in" } }
+  output { provider = "twilio.whatsapp" config { account_sid = env("TWILIO_SID"); token = env("TWILIO_TOKEN"); require_schema = "com.katasec.twilio/1-0-0" } }
+}
+
+How to create things
+Create a provider (OSS)
+
+New class library: Katasec.DStream.Provider.Xxx.
+
+Implement IInput or IOutput (derive from InputBase/OutputBase).
+
+Add [Provider("<key>", Direction.Input|Output)].
+
+Define an Options class with DataAnnotations; the host binds your config {} block to it.
+
+Add unit tests via TestKit.
+
+Create a custom host (closed or open)
+
+Start from Host.Template.
+
+Add your transform function (sync/async).
+
+Build/publish as OCI (plugin_ref = "oci://...") or run locally with file://….
+
+Packaging & versioning
+
+Abstractions is LTS (SemVer-strict). Keep it tiny and stable.
+
+Runtime/Providers/Hosts rev minors as needed.
+
+Bridge host ships as self-contained exe and as an OCI image (ghcr.io/katasec/dstream-bridge:vX.Y.Z).
+
+Optional DevOps flow: dstream init resolves provider packages per required_providers and drops DLLs into .dstream/providers/**; the host scans that folder on startup.
+
+Security & observability
+
+Secrets via env; logs redact keys like *password*, *secret*, token, connection_string.
+
+W3C traceparent propagated in Envelope for tracing across chained tasks.
+
+Metrics hooks in Runtime (throughput, retries, DLQ counts, input lag).
+
+If/when you add OCI providers later, you can enforce allow-listed registries and signed packages—host code already cleanly separates discovery from execution.
+
+This is the high-level context Copilot (or any LLM) needs to propose correct code, right places to put it, and keep the design goals intact: simple, composable, reliable.
+
+
+# DStream .NET SDK — Migration Plan (for Copilot)
+
+This file gives GitHub Copilot the context + exact tasks to migrate our existing repos into the new single-binary, in-proc providers design. It includes the code-move map, target project layout, interfaces to implement, and step-by-step TODOs per project.
+
+0) Goal & mental model
+
+One task = one long-running host process (daemon/worker).
+
+Providers run in-proc (no extra processes). Host loads them by attribute discovery.
+
+Transform is optional. If present, it’s inside a custom host; otherwise the Bridge host just pipes input→output.
+
+HCL grammar (final):
+
+task "<name>" {
+  plugin_ref = "builtin://bridge" | "oci://<image:tag>" | "file://../out/custom"
+  input  { provider = "<key>";  config { ... } }
+  output { provider = "<key>";  config { ... } }   # use provider="null" for terminal/sink if needed
+  # optional
+  config { ... }   # only for custom hosts
+}
+
+
+Secrets live in env via env("NAME"); everything stays in config {}.
+
+1) Repos
+
+This repo: dstream-dotnet-sdk (monorepo with Abstractions, Runtime, Hosts, Providers, TestKit, samples).
+
+Separate: dstream-cli (Go). Not part of this migration.
+
+2) Target solution layout (already scaffolded)
+src/
+  Katasec.DStream.Abstractions/
+  Katasec.DStream.Runtime/
+  Katasec.DStream.Host.Bridge/
+  Katasec.DStream.Host.Template/
+  Katasec.DStream.Provider.AsbQueue/
+  Katasec.DStream.Provider.MssqlCdc/
+  Katasec.DStream.Provider.PostgresCdc/
+  Katasec.DStream.Provider.Twilio/
+  Katasec.DStream.Provider.Console/
+  Katasec.DStream.SDK/
+test/
+  Katasec.DStream.TestKit/
+  Runtime.Tests/
+  Providers.AsbQueue.Tests/
+samples/
+  Playground/
+
+
+Namespaces/NuGets stay PascalCase (Katasec.DStream.*); GitHub repo name is kebab (dstream-dotnet-sdk).
+
+3) Code-move map (source → destination)
+Source (today)	What it holds	Destination (new)	New artifact
+Katasec.DStream.Plugin	Interfaces, models, base provider types	src/Katasec.DStream.Abstractions	Katasec.DStream.Abstractions (NuGet)
+Katasec.DStream.Providers	Base + concrete providers	Split → src/Katasec.DStream.Provider.* projects	One NuGet per provider (e.g., ...Provider.AsbQueue)
+dstream-dotnet-test	Sample host/playground	src/Katasec.DStream.Host.Template (scaffold) and samples/Playground	Template: NuGet; sample: none
+
+Move only stable contracts to Abstractions. No orchestration code there.
+
+4) Contracts to implement (Abstractions)
+
+Create minimal, stable interfaces & types. Copilot should fill the bodies and add XML docs.
+
+namespace Katasec.DStream.Abstractions;
+
+public enum Direction { Input, Output }
+
+[AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
+public sealed class ProviderAttribute : Attribute
+{
+    public ProviderAttribute(string key, Direction direction)
+    { Key = key; Direction = direction; }
+    public string Key { get; }
+    public Direction Direction { get; }
+}
+
+public sealed record Envelope(
+    string Id,
+    string Type,
+    string? Schema,
+    string? IdempotencyKey,
+    ReadOnlyMemory<byte> Payload,
+    IReadOnlyDictionary<string,string>? Attributes = null,
+    string? TraceParent = null);
+
+public interface IInput
+{
+    IAsyncEnumerable<Envelope> ReadAsync(InputContext ctx, CancellationToken ct);
+}
+
+public interface IOutput
+{
+    Task WriteAsync(Envelope message, OutputContext ctx, CancellationToken ct);
+}
+
+public sealed class InputContext
+{
+    public IServiceProvider Services { get; init; } = default!;
+    public ILogger Logger { get; init; } = default!;
+    public IReadOnlyDictionary<string, object?> Options { get; init; } = default!;
+    // Add checkpoint APIs if needed later.
+}
+
+public sealed class OutputContext
+{
+    public IServiceProvider Services { get; init; } = default!;
+    public ILogger Logger { get; init; } = default!;
+    public IReadOnlyDictionary<string, object?> Options { get; init; } = default!;
+}
+
+public abstract class InputBase : IInput
+{
+    public abstract IAsyncEnumerable<Envelope> ReadAsync(InputContext ctx, CancellationToken ct);
+}
+
+public abstract class OutputBase : IOutput
+{
+    public abstract Task WriteAsync(Envelope message, OutputContext ctx, CancellationToken ct);
+}
+
+
+TODOs for Copilot:
+
+Add XML docs & remarks.
+
+Add simple OptionBinder helpers (convert HCL config {} into typed options with DataAnnotations validation).
+
+Add redaction helper (mask *password*, *secret*, token, connection_string in logs).
+
+5) Runtime tasks
+
+Implement orchestration; no business/IO here.
+
+5.1 Provider discovery (assembly scan + keyed DI)
+namespace Katasec.DStream.Runtime;
+
+public static class ProviderDiscovery
+{
+    public static void AddDiscoveredProviders(IServiceCollection services, IEnumerable<Assembly> assemblies)
+    {
+        foreach (var asm in assemblies)
+        {
+            Type[] types;
+            try { types = asm.GetTypes(); }
+            catch { continue; }
+
+            foreach (var t in types)
+            {
+                var attr = t.GetCustomAttribute<Katasec.DStream.Abstractions.ProviderAttribute>();
+                if (attr is null) continue;
+
+                if (attr.Direction == Direction.Input && typeof(IInput).IsAssignableFrom(t))
+                    services.AddKeyedTransient<IInput>(attr.Key, t);
+                else if (attr.Direction == Direction.Output && typeof(IOutput).IsAssignableFrom(t))
+                    services.AddKeyedTransient<IOutput>(attr.Key, t);
+            }
+        }
+    }
+}
+
+
+TODOs:
+
+Probe AppContext.BaseDirectory and optional .dstream/providers/** folder for DLLs and load assemblies.
+
+Log all discovered keys on startup and fail fast on duplicate keys.
+
+5.2 Pipeline loop (bounded channel)
+public sealed class Pipeline
+{
+    public static async Task RunAsync(
+        IInput input, IOutput output,
+        ILogger logger, CancellationToken ct)
+    {
+        var channel = Channel.CreateBounded<Envelope>(new BoundedChannelOptions(1024) {
+            SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait
+        });
+
+        // producer
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await foreach (var env in input.ReadAsync(new InputContext{ /* set props */ }, ct))
+                {
+                    await channel.Writer.WriteAsync(env, ct);
+                }
+            }
+            catch (OperationCanceledException) { }
+            finally { channel.Writer.TryComplete(); }
+        }, ct);
+
+        // consumer
+        while (await channel.Reader.WaitToReadAsync(ct))
+        {
+            while (channel.Reader.TryRead(out var env))
+            {
+                // TODO: retry with jitter, DLQ on repeated failure
+                await output.WriteAsync(env, new OutputContext{ /* set props */ }, ct);
+                // TODO: ack CDC commit after successful write
+            }
+        }
+    }
+}
+
+
+TODOs:
+
+Add retry policy (exponential jitter).
+
+Add DLQ hooks.
+
+Inject TraceParent to logs/metrics.
+
+Implement CDC checkpoint ack in input provider(s) after sink success.
+
+6) Hosts
+6.1 Bridge host (Katasec.DStream.Host.Bridge)
+
+Program.cs: parse HCL (stub minimal); build DI; discover providers; resolve by key; run pipeline.
+
+plugin_ref is accepted but ignored here (it is the builtin bridge).
+
+Program.cs sketch
+
+var builder = Host.CreateApplicationBuilder(args);
+builder.Services.AddLogging(l => l.AddSimpleConsole());
+
+var baseDir = AppContext.BaseDirectory;
+var probeDirs = new[] { baseDir, Path.Combine(baseDir, ".dstream", "providers") }
+                .Where(Directory.Exists);
+var asms = probeDirs.SelectMany(d => Directory.EnumerateFiles(d, "*.dll"))
+                    .Select(AssemblyLoadContext.Default.LoadFromAssemblyPath)
+                    .Distinct();
+
+ProviderDiscovery.AddDiscoveredProviders(builder.Services, asms);
+
+using var host = builder.Build();
+
+// TODO: parse HCL file path from args; for now stub a config object:
+var inputKey  = "mssql.cdc";
+var outputKey = "asb.queue";
+
+var sp = host.Services;
+var input  = sp.GetRequiredKeyedService<IInput>(inputKey);
+var output = sp.GetRequiredKeyedService<IOutput>(outputKey);
+
+var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("Bridge");
+await Pipeline.RunAsync(input, output, logger, host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping);
+
+6.2 Template host (Katasec.DStream.Host.Template)
+
+Same as Bridge, but with a transform function you own (org-specific).
+
+TODO: Add a Func<Envelope, Envelope> or async variant; wire it between input and output.
+
+7) Providers
+
+All providers self-register with [Provider("<key>", Direction.Input|Output)] and expose a typed options class validated via DataAnnotations. Copilot should port logic from the old repo.
+
+7.1 Console/Null (utils)
+
+Keys: "console" (output), "null" (input/output).
+
+Quick stubs for end-to-end testing.
+
+7.2 ASB Queue (output)
+
+Key: "asb.queue".
+
+Options: ConnectionString (env), Queue, DuplicateDetectionWin, Ttl, MaxInFlight, Session.
+
+Behavior: idempotency on Envelope.IdempotencyKey; duplicate detection window; DLQ on permanent failures.
+
+7.3 MSSQL CDC (input)
+
+Key: "mssql.cdc".
+
+Options: ConnString, Table, CaptureInstance?, StartFrom (checkpoint|head|lsn:<hex>), PollMs.
+
+Behavior: produce Envelope with stable Id, commit after sink ok.
+
+7.4 Postgres CDC (input)
+
+Key: "postgres.cdc".
+
+Options: ConnString, Schema, Table, Slot, Publication, StartFrom, PollMs.
+
+7.5 Twilio (output)
+
+Key: "twilio.whatsapp".
+
+Options: AccountSid, Token, RequireSchema (e.g., com.katasec.twilio/1-0-0), IdempotencyKeyPath.
+
+Copilot hint: For each provider project, create Options class + validators, ProviderAttribute, and an implementation derived from InputBase / OutputBase. Wire IOptions<T> via DI.
+
+8) TestKit & tests
+
+TestKit: helpers to run a provider pair in-memory → verify retries, DLQ, idempotency, schema gates.
+
+Runtime.Tests: pipeline backpressure & retry behavior.
+
+Providers.AsbQueue.Tests: enqueue/dequeue round-trips (mock or live connection string via env).
+
+Copilot TODOs:
+
+Add a minimal fake input/output provider for unit tests.
+
+Add [Trait("Category","Conformance")] for CI filters.
+
+9) SDK meta-package
+
+Katasec.DStream.SDK depends on: Abstractions, Runtime, and the common providers.
+
+No code—just a roll-up to make dotnet add package Katasec.DStream.SDK useful.
+
+10) Optional: dstream init (later)
+
+Terraform-style mapping for DevOps composability (optional next phase):
+
+required_providers {
+  "mssql.cdc"       = { source = "nuget:Katasec.DStream.Provider.MssqlCdc",  version = "~>1.3" }
+  "asb.queue"       = { source = "nuget:Katasec.DStream.Provider.AsbQueue",  version = "^1.2" }
+  "twilio.whatsapp" = { source = "nuget:Katasec.DStream.Provider.Twilio",    version = "1.*" }
+}
+
+
+dstream init resolves, downloads to .dstream/providers/**, writes a lockfile. Host scanning logic stays unchanged.
+
+11) Coding conventions
+
+Repo name: dstream-dotnet-sdk (kebab).
+
+Packages/namespaces: Katasec.DStream.* (PascalCase).
+
+Logging: structured, redact *password*, *secret*, token, connection_string.
+
+SemVer: Abstractions is LTS; avoid breaking changes. Others can rev minors frequently.
+
+No trimming on Bridge Host initially to avoid reflection issues.
+
+12) Migration checklist
+
+ Implement Abstractions types (interfaces + base classes).
+
+ Port ProviderAttribute and annotate all providers with the right keys.
+
+ Implement ProviderDiscovery (assembly scan + keyed DI) in Runtime.
+
+ Implement Pipeline loop with backpressure, retry, DLQ hooks.
+
+ Wire Bridge Host Program.cs to parse a stub HCL and run the pipeline.
+
+ Port Console/Null provider (quick win).
+
+ Port ASB Queue provider (output).
+
+ Port MSSQL CDC provider (input).
+
+ Port Twilio provider (output).
+
+ Add Runtime.Tests + Providers.AsbQueue.Tests; green build.
+
+ Publish initial NuGets (Abstractions, Runtime, providers) + self-contained Bridge binary.
+
+Appendix: Sample provider skeleton
+[Provider("asb.queue", Direction.Output)]
+public sealed class AsbQueueOutput : OutputBase
+{
+    private readonly AsbQueueOptions _options;
+    private readonly ILogger<AsbQueueOutput> _log;
+
+    public AsbQueueOutput(IOptions<AsbQueueOptions> options, ILogger<AsbQueueOutput> log)
+    { _options = options.Value; _log = log; }
+
+    public override async Task WriteAsync(Envelope message, OutputContext ctx, CancellationToken ct)
+    {
+        // TODO: create/send ServiceBusMessage, set MessageId = message.IdempotencyKey ?? message.Id
+        // TODO: respect TTL / duplicate detection window, handle retries
+    }
+}
+
+public sealed class AsbQueueOptions
+{
+    [Required] public string ConnectionString { get; init; } = default!;
+    [Required] public string Queue { get; init; } = default!;
+    public string? DuplicateDetectionWin { get; init; }
+    public string? Ttl { get; init; }
+    public int MaxInFlight { get; init; } = 256;
+}
