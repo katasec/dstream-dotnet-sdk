@@ -17,12 +17,12 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
-  <ItemGroup>
+  <!--<ItemGroup>
     <None Include="..\..\README.md">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>
-  </ItemGroup>
+  </ItemGroup>-->
 
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.31.1" />
@@ -38,6 +38,11 @@
 
   <ItemGroup>
     <Protobuf Include="Protos\plugin.proto" GrpcServices="Both" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Blah\" />
+    <Folder Include="Extensions\" />
   </ItemGroup>
 
 </Project>

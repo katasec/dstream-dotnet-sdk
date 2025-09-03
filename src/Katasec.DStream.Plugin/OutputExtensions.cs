@@ -1,8 +1,9 @@
-using System.Text.Json;
-using Katasec.DStream.Plugin.Interfaces;
+﻿using Katasec.DStream.Plugin.Interfaces;
 using Katasec.DStream.Plugin.Models;
+using System.Text.Json;
 
 namespace Katasec.DStream.Plugin.Extensions;
+
 
 public static class OutputExtensions
 {
@@ -11,7 +12,7 @@ public static class OutputExtensions
         // Serialize to JsonElement
         var json = JsonSerializer.Serialize(value);
         var data = JsonDocument.Parse(json).RootElement;
-        
+
         // Create stream item and write
         var item = StreamItem.Create(data, source, operation);
         return output.WriteAsync(new[] { item }, cancellationToken);
