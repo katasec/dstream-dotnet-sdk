@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -29,8 +29,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Katasec.DStream.Plugin\Katasec.DStream.Plugin.csproj" />
-    <ProjectReference Include="..\Katasec.DStream.Providers\Katasec.DStream.Providers.csproj" />
+    <ProjectReference Include="..\..\legacy\Katasec.DStream.Plugin\Katasec.DStream.Plugin.csproj" />
+    <ProjectReference Include="..\..\legacy\Katasec.DStream.Providers\Katasec.DStream.Providers.csproj" />
   </ItemGroup>
 
   <ItemGroup>
