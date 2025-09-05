@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>dstream_dotnet_test</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile> <!-- Optional: bundle into a single file --> 
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="out\**" />
+    <EmbeddedResource Remove="out\**" />
+    <None Remove="out\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove=".gitignore" />
+    <None Remove="build.ps1" />
+    <None Remove="Makefile" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="HCLog.Net" Version="0.0.5" />
+    <!--<PackageReference Include="Katasec.DStream.Plugin" Version="0.0.10" />
+    <PackageReference Include="Katasec.DStream.Providers" Version="0.0.1" />-->
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Katasec.DStream.Plugin\Katasec.DStream.Plugin.csproj" />
+    <ProjectReference Include="..\Katasec.DStream.Providers\Katasec.DStream.Providers.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Protos\plugin.proto" GrpcServices="Both" />
+  </ItemGroup>
+
+</Project>
