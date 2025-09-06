@@ -17,6 +17,12 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Remove="Blah\**" />
+    <EmbeddedResource Remove="Blah\**" />
+    <None Remove="Blah\**" />
+  </ItemGroup>
+
   <!--<ItemGroup>
     <None Include="..\..\README.md">
       <Pack>True</Pack>
@@ -41,7 +47,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Blah\" />
     <Folder Include="Extensions\" />
   </ItemGroup>
 

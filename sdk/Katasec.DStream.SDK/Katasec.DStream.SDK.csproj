@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Katasec.DStream.Abstractions\Katasec.DStream.Abstractions.csproj" />
+  </ItemGroup>
+
 </Project>
