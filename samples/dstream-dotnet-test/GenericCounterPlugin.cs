@@ -9,6 +9,7 @@ namespace DStreamDotNetTest;
 /// </summary>
 public sealed class GenericCounterPlugin : ProviderBase<GenericCounterConfig>, IInputProvider
 {
+
     public async IAsyncEnumerable<Envelope> ReadAsync(IPluginContext ctx, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         var hc = (HCLogger)ctx.Logger; // HCLogger from the host
@@ -29,5 +30,5 @@ public sealed class GenericCounterPlugin : ProviderBase<GenericCounterConfig>, I
         }
 
     }
-
 }
+

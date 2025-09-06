@@ -6,4 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="HCLog.Net" Version="0.0.5" />
+    <ProjectReference Include="..\..\sdk\Katasec.DStream.SDK\Katasec.DStream.SDK.csproj" />
+  </ItemGroup>
+
 </Project>
