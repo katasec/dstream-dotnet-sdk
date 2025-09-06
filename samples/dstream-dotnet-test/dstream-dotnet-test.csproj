@@ -29,8 +29,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\legacy\Katasec.DStream.Plugin\Katasec.DStream.Plugin.csproj" />
-    <ProjectReference Include="..\..\legacy\Katasec.DStream.Providers\Katasec.DStream.Providers.csproj" />
+    <!--<ProjectReference Include="..\..\legacy\Katasec.DStream.Plugin\Katasec.DStream.Plugin.csproj" />
+    <ProjectReference Include="..\..\legacy\Katasec.DStream.Providers\Katasec.DStream.Providers.csproj" />-->
     <ProjectReference Include="..\..\sdk\Katasec.DStream.Abstractions\Katasec.DStream.Abstractions.csproj" />
     <ProjectReference Include="..\..\sdk\Katasec.DStream.Host.Bridge\Katasec.DStream.Host.Bridge.csproj" />
     <ProjectReference Include="..\..\sdk\Katasec.DStream.SDK\Katasec.DStream.SDK.csproj" />
