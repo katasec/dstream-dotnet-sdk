@@ -30,41 +30,42 @@ public sealed class PluginServiceImpl<TProvider, TConfig> : Proto.Plugin.PluginB
         return Task.FromResult(new Proto.GetSchemaResponse());
     }
 
-    public override Task<Empty> Start(Proto.StartRequest request, ServerCallContext context)
+    public override async Task<Empty> Start(Proto.StartRequest request, ServerCallContext context)
     {
         var raw = JsonFormatter.Default.Format(request);
         _log.Info($"[RPC] Start payload={raw}");
 
-        // Bind StartRequest -> TConfig (tries request.config first, else whole object)
         _config = BindConfig(raw) ?? new TConfig();
         _log.Info($"[CONFIG] bound={JsonSerializer.Serialize(_config)}");
 
-
-        // log interval if present on TConfig
-        var prop = typeof(TConfig).GetProperties()
-            .FirstOrDefault(p => string.Equals(p.Name, "Interval", StringComparison.OrdinalIgnoreCase));
-        if (prop is not null)
-        {
-            var val = prop.GetValue(_config);
-            _log.Info($"[CONFIG] interval(from TConfig)={val}");
-        }
-
-
-        // Initialize provider (once)
+        // init provider once
         if (_provider is null)
         {
             _provider = new TProvider();
-            var initCtx = MakeCtx();
-            _provider.Initialize(_config, initCtx);
+            _provider.Initialize(_config, MakeCtx());
         }
 
-        // Kick the input loop in background (since Start is unary)
-        _runCts?.Cancel();
-        _runCts = new CancellationTokenSource();
-        _ = RunInputLoop(_runCts.Token);
+        // BLOCK here and drive the input loop until host cancels the RPC
+        if (_provider is not IInputProvider input)
+        {
+            _log.Warn("provider is not IInputProvider; nothing to run");
+            return new Empty();
+        }
 
-        return Task.FromResult(new Empty());
+        var ct = context.CancellationToken; // will cancel when host stops the task
+        var ctx = MakeCtx();
+
+        try
+        {
+            await foreach (var env in input.ReadAsync(ctx, ct))
+                await ctx.Emit(env, ct);
+        }
+        catch (OperationCanceledException) { /* normal shutdown */ }
+        catch (Exception ex) { _log.Error("run_input_loop_failed", ex); }
+
+        return new Empty();
     }
+
 
     // ---------- helpers ----------
 

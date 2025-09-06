@@ -1,13 +1,9 @@
 namespace DStreamDotNetTest;
 
-/// <summary>
-/// Mirrors HCL:
-/// task { type="plugin" ... config { interval = 5000 } }
-/// Only the plugin's own config block is represented here.
-/// </summary>
+
 public sealed record GenericCounterConfig
 {
-    // Name matches HCL key exactly: "interval"
+    // Name matches HCL key "interval" from dstream.hcl
     // Units: milliseconds
     public int Interval { get; init; } = 5000;
 }

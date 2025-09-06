@@ -23,16 +23,24 @@ public sealed class GenericCounterPlugin : ProviderBase<GenericCounterConfig>, I
             seq++;
             hc.Debug($"tick seq={seq}");
 
-            var meta = new Dictionary<string, object?> { ["seq"] = seq, ["source"] = "counter" };
+            var meta = new Dictionary<string, object?> 
+            { 
+                ["seq"] = seq, 
+                ["source"] = "counter" 
+            };
+
             yield return new Envelope(seq, meta);
         }
 
         hc.Info("counter_complete");
     }
 
-    protected override void OnInitialized()
+}
+
+public sealed class Blah : ProviderBase<GenericCounterConfig>, IInputProvider
+{
+    public IAsyncEnumerable<Envelope> ReadAsync(IPluginContext ctx, CancellationToken ct)
     {
-        var hc = (HCLogger)Ctx.Logger;
-        hc.Info("initialized_counter_plugin");
+        throw new NotImplementedException();
     }
 }
