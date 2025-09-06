@@ -67,26 +67,6 @@ public sealed class PluginServiceImpl<TProvider, TConfig> : Proto.Plugin.PluginB
     }
 
 
-    // ---------- helpers ----------
-
-    private async Task RunInputLoop(CancellationToken ct)
-    {
-        if (_provider is not IInputProvider input) { _log.Warn("provider is not IInputProvider"); return; }
-
-        var ctx = MakeCtx();
-
-        try
-        {
-            await foreach (var env in input.ReadAsync(ctx, ct))
-            {
-                // Emit is bridged to HCLogger for now; you can swap to gRPC later if you add a stream RPC.
-                await ctx.Emit(env, ct);
-            }
-        }
-        catch (OperationCanceledException) { /* normal */ }
-        catch (Exception ex) { _log.Error("run_input_loop_failed", ex); }
-    }
-
     private IPluginContext MakeCtx() =>
         new LocalContext(_log, _services, async (env, _) =>
         {
