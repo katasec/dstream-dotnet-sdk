@@ -3,10 +3,14 @@ using Katasec.DStream.Abstractions;
 using HCLog.Net;
 using Katasec.DStream.SDK;
 
+// Entry point for the plugin. 
+// A plugin has code (GenericCounterPlugin) and config (GenericCounterConfig).
+// and is run by the host (PluginHost).
 await PluginHost.Run<GenericCounterPlugin, GenericCounterConfig>();
 
+
 /// <summary>
-/// Default config for GenericCounterPlugin.
+/// Config for the GenericCounterPlugin.
 /// </summary>
 public sealed record GenericCounterConfig
 {
@@ -16,6 +20,7 @@ public sealed record GenericCounterConfig
 }
 
 /// <summary>
+///  Code for the plugin:
 ///  A plugin implements ProviderBase<TConfig>. ReadAsync reads from the source and 
 ///  yields Envelopes downstream.
 ///  An envelope is a payload + optional metadata dictionary.
