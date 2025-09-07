@@ -19,7 +19,6 @@ public sealed class PluginServiceImpl<TProvider, TConfig> : Proto.Plugin.PluginB
 
     private TProvider? _provider;
     private TConfig _config = new();
-    private CancellationTokenSource? _runCts;
 
     public PluginServiceImpl(HCLogger log) => _log = log;
 
