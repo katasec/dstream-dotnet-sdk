@@ -45,6 +45,27 @@ dotnet publish dstream-dotnet-test.csproj -c Release -r linux-x64 -o out
 dotnet publish dstream-dotnet-test.csproj -c Release -r osx-x64 -o out
 ```
 
+### Running Plugins via DStream CLI
+```bash
+# Navigate to the Go CLI project
+cd C:\Users\ameer.deen\progs\dstream
+
+# Run a specific task defined in dstream.hcl
+go run . run dotnet-counter
+
+# Run with debug logging
+go run . run dotnet-counter --log-level debug
+
+# Example dstream.hcl task configuration:
+# task "dotnet-counter" {
+#   type = "plugin"
+#   plugin_path = "../dstream-dotnet-sdk/samples/dstream-dotnet-test/out/dstream-dotnet-test"
+#   config { interval = 500 }
+#   input { provider = "null"; config {} }
+#   output { provider = "console"; config { format = "json" } }
+# }
+```
+
 ### Package Management
 ```bash
 # Restore NuGet packages for all projects
@@ -120,15 +141,50 @@ await PluginHost.Run<MyPlugin, PluginConfig>();
 
 ### Integration with DStream CLI
 
-Plugins are deployed as self-contained executables that communicate with the DStream CLI via gRPC using HashiCorp's go-plugin protocol. The plugin outputs a handshake message on startup and then serves gRPC requests for configuration binding and data processing.
+The DStream CLI is a Go application located at `C:\Users\ameer.deen\progs\dstream` that serves as the host for .NET plugins. The integration works as follows:
+
+**Plugin Lifecycle:**
+1. Go CLI parses `dstream.hcl` configuration file
+2. CLI launches .NET plugin executable as subprocess using `exec.Command()`
+3. .NET plugin starts gRPC server and outputs handshake: `1|1|tcp|127.0.0.1:{port}|grpc`
+4. Go CLI connects to plugin's gRPC server
+5. CLI sends `StartRequest` with config, input, and output provider settings
+6. Plugin runs until cancelled by CLI
+
+**gRPC Interface (defined in `proto/plugin.proto`):**
+```protobuf
+service Plugin {
+  rpc GetSchema (google.protobuf.Empty) returns (GetSchemaResponse);
+  rpc Start (StartRequest) returns (google.protobuf.Empty);
+}
+```
+
+**Configuration Flow:**
+- HCL config → Go CLI → JSON → gRPC `StartRequest` → .NET deserialization → Plugin config
+- Configuration includes global plugin settings, input provider config, and output provider config
 
 ### Development Notes
 
+**Technical Requirements:**
 - Plugins must target .NET 9.0 or later
 - Use `PublishSingleFile=true` for deployment to create standalone executables
+- All plugins must implement gRPC server using ASP.NET Core + Kestrel (HTTP/2)
+- Plugins communicate exclusively via gRPC (HashiCorp go-plugin protocol)
+
+**Logging Integration:**
 - HCLogger (from HCLog.Net) is used for logging integration with HashiCorp tools
-- Configuration is automatically bound from HCL to .NET config objects via JSON serialization
+- Logs are written to stderr (stdout is reserved for handshake protocol)
+- Log format is compatible with go-hclog JSON structure
+
+**Configuration System:**
+- Configuration is automatically bound from HCL → JSON → .NET config objects
+- Uses `google.protobuf.Struct` for config transport over gRPC
+- Plugin receives global config, input config, and output config separately
 - The `[EnumeratorCancellation]` attribute is required on cancellation tokens in async enumerables
+
+**Plugin Detection:**
+- CLI detects plugins via environment variables: `PLUGIN_PROTOCOL_VERSIONS`, `PLUGIN_MIN_PORT`
+- Direct execution shows HashiCorp-style warning message
 
 ## Common Provider Patterns
 
