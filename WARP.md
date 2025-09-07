@@ -10,7 +10,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 dotnet build dstream-dotnet-sdk.sln
 
 # Build a specific project
-dotnet build sdk/Katasec.DStream.SDK/Katasec.DStream.SDK.csproj
+dotnet build sdk/Katasec.DStream.SDK.Core/Katasec.DStream.SDK.Core.csproj
 
 # Build in release mode
 dotnet build dstream-dotnet-sdk.sln -c Release
@@ -81,12 +81,11 @@ dotnet clean dstream-dotnet-sdk.sln
 
 **SDK Architecture (Current - Recommended)**
 - `Katasec.DStream.Abstractions`: Core interfaces (`IInputProvider`, `IOutputProvider`, `IPluginContext`)
-- `Katasec.DStream.SDK`: Base classes (`ProviderBase<TConfig>`) and utilities
-- `Katasec.DStream.Host.Bridge`: gRPC bridge for HashiCorp go-plugin integration
+- `Katasec.DStream.SDK.Core`: Base classes (`ProviderBase<TConfig>`) and utilities
+- `Katasec.DStream.SDK.PluginHost`: Main SDK package for plugin developers (gRPC bridge for HashiCorp go-plugin integration)
 
-**Legacy Architecture (Being Phased Out)**
-- `Katasec.DStream.Plugin`: Legacy plugin interfaces and registry
-- `Katasec.DStream.Providers`: Legacy provider implementations
+**Legacy Architecture (Removed)**
+- Legacy components have been removed after successful migration to new SDK
 
 ### Plugin Development Pattern
 
@@ -134,10 +133,22 @@ await PluginHost.Run<MyPlugin, PluginConfig>();
 ### Project Structure
 
 - `sdk/`: Current SDK implementation (use this)
+  - `Katasec.DStream.Abstractions/`: Core interfaces
+  - `Katasec.DStream.SDK.Core/`: Base classes and utilities
+  - `Katasec.DStream.SDK.PluginHost/`: Main SDK package (reference this for plugin development)
 - `providers/`: Sample provider implementations
 - `samples/`: Example plugins and usage patterns
 - `tests/`: Unit tests and test utilities
-- `legacy/`: Deprecated components (avoid for new development)
+- Legacy components have been removed
+
+### Developer Experience
+
+**Plugin developers only need to reference one package:**
+```xml
+<ProjectReference Include="Katasec.DStream.SDK.PluginHost" />
+```
+
+This follows AWS SDK patterns where developers reference the main SDK package (like `AWS.SDK.S3`) rather than internal implementation details.
 
 ### Integration with DStream CLI
 

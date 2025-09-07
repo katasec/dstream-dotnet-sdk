@@ -1,8 +1,26 @@
 # DStream .NET SDK
 
-This SDK makes it easy to build **DStream plugins in .NET**.  
+A modern .NET SDK for building **DStream plugins**.
 Plugins are loaded by the DStream CLI via [HashiCorp go-plugin](https://github.com/hashicorp/go-plugin) over gRPC.  
 Each plugin defines a **Config**, a **Provider**, and implements one or more provider interfaces (`IInputProvider`, `IOutputProvider`, etc).
+
+## Quick Start
+
+**1. Reference the SDK:**
+```xml
+<ProjectReference Include="Katasec.DStream.SDK.PluginHost" />
+```
+
+**2. Create your plugin:**
+```csharp
+using Katasec.DStream.SDK.PluginHost;
+using Katasec.DStream.SDK.Core;
+using Katasec.DStream.Abstractions;
+
+await PluginHost.Run<MyPlugin, MyConfig>();
+```
+
+**That's it!** The SDK handles all the gRPC plumbing, configuration binding, and HashiCorp go-plugin protocol details.
 
 ---
 
@@ -79,8 +97,9 @@ public sealed class GenericCounterPlugin
 In your sample app:
 
 ```csharp
-using Katasec.DStream.Host.Bridge;
-using DStreamDotNetTest;
+using Katasec.DStream.SDK.PluginHost;
+using Katasec.DStream.SDK.Core;
+using Katasec.DStream.Abstractions;
 
 await PluginHost.Run<GenericCounterPlugin, GenericCounterConfig>();
 ```
@@ -116,7 +135,32 @@ task "dotnet-counter" {
 
 ---
 
-✅ With this model:
-- **Sources** = `IInputProvider` (produce events, like the counter).  
-- **Sinks**   = `IOutputProvider` (consume events, like ASB or Console).  
-- **Config** is automatically bound from HCL → gRPC → `TConfig`.  
+## SDK Architecture
+
+The DStream .NET SDK follows modern patterns:
+
+- **`Katasec.DStream.SDK.PluginHost`** - Main package for plugin developers (reference this)
+- **`Katasec.DStream.SDK.Core`** - Base classes (`ProviderBase<TConfig>`)
+- **`Katasec.DStream.Abstractions`** - Core interfaces (`IInputProvider`, `IOutputProvider`)
+
+### Plugin Development Flow
+
+1. **Reference SDK**: `Katasec.DStream.SDK.PluginHost`
+2. **Define Config**: POCO class for your plugin settings
+3. **Implement Provider**: Inherit from `ProviderBase<TConfig>`
+4. **Bootstrap**: Call `PluginHost.Run<TPlugin, TConfig>()`
+
+### Integration
+
+✅ **Modern Architecture**:
+- **Sources** = `IInputProvider` (produce events, like the counter)
+- **Sinks** = `IOutputProvider` (consume events, like ASB or Console)
+- **Config** is automatically bound from HCL → gRPC → `TConfig`
+- **Clean builds** with no warnings from generated code
+- **Simple developer experience** - reference one package and go!
+
+## Getting Started
+
+See the [sample project](./samples/dstream-dotnet-test/) for a complete working example.
+
+For detailed development guidance, see [WARP.md](./WARP.md).
