@@ -21,7 +21,7 @@ public sealed record GenericCounterConfig
 
 /// <summary>
 ///  Code for the plugin:
-///  A plugin implements ProviderBase<TConfig>. ReadAsync reads from the source and 
+///  A plugin implements ProviderBase. ReadAsync reads from the source and 
 ///  yields Envelopes downstream.
 ///  An envelope is a payload + optional metadata dictionary.
 /// </summary>
