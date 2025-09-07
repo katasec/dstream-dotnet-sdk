@@ -60,12 +60,9 @@ await PluginHost.Run<MyPlugin, MyConfig>();
 This plugin generates an incrementing counter every `Interval` milliseconds.
 
 ```csharp
-public sealed class GenericCounterPlugin 
-    : ProviderBase<GenericCounterConfig>, IInputProvider
+public sealed class GenericCounterPlugin : ProviderBase<GenericCounterConfig>, IInputProvider
 {
-    public async IAsyncEnumerable<Envelope> ReadAsync(
-        IPluginContext ctx,
-        [EnumeratorCancellation] CancellationToken ct)
+    public async IAsyncEnumerable<Envelope> ReadAsync(IPluginContext ctx, [EnumeratorCancellation] CancellationToken ct)
     {
         var log = (HCLog.Net.HCLogger)ctx.Logger;
         log.Info($"counter_start interval={Config.Interval}");
