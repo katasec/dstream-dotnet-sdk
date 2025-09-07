@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using HCLog.Net;
 using Katasec.DStream.Abstractions;
-using Katasec.DStream.SDK;
+using Katasec.DStream.SDK.Core;
 
 namespace Katasec.DStream.Provider.ConsoleOut;
 

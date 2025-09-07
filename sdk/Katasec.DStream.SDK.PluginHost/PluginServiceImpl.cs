@@ -5,10 +5,10 @@ using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using HCLog.Net;
 using Katasec.DStream.Abstractions;
-using Katasec.DStream.SDK;
+using Katasec.DStream.SDK.Core;
 using Proto = Katasec.DStream.Proto;
 
-namespace Katasec.DStream.Host.Bridge;
+namespace Katasec.DStream.SDK.PluginHost;
 
 public sealed class PluginServiceImpl<TProvider, TConfig> : Proto.Plugin.PluginBase
     where TProvider : ProviderBase<TConfig>, IProvider, new()

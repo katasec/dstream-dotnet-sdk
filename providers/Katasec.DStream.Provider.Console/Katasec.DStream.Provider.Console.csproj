@@ -8,7 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="HCLog.Net" Version="0.0.5" />
-    <ProjectReference Include="..\..\sdk\Katasec.DStream.SDK\Katasec.DStream.SDK.csproj" />
+    <ProjectReference Include="..\..\sdk\Katasec.DStream.SDK.Core\Katasec.DStream.SDK.Core.csproj" />
   </ItemGroup>
 
 </Project>

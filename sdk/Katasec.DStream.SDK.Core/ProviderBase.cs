@@ -1,6 +1,6 @@
 ﻿using Katasec.DStream.Abstractions;
 
-namespace Katasec.DStream.SDK;
+namespace Katasec.DStream.SDK.Core;
 
 /// <summary>
 /// Base class for providers that need config binding + access to plugin context.

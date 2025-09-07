@@ -10,7 +10,7 @@
   <ItemGroup>
     <!-- SDK deps -->
     <ProjectReference Include="..\Katasec.DStream.Abstractions\Katasec.DStream.Abstractions.csproj" />
-    <ProjectReference Include="..\Katasec.DStream.SDK\Katasec.DStream.SDK.csproj" />
+    <ProjectReference Include="..\Katasec.DStream.SDK.Core\Katasec.DStream.SDK.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,7 +23,7 @@
 
   <ItemGroup>
     <!-- PROTO files (with csharp_namespace = "Katasec.DStream.Proto") -->
-    <Protobuf Include="..\..\legacy\Katasec.DStream.Plugin\Protos\*.proto" GrpcServices="Server" ProtoRoot="..\..\legacy\Katasec.DStream.Plugin\Protos" />
+    <Protobuf Include="Protos\*.proto" GrpcServices="Server" />
   </ItemGroup>
 
 

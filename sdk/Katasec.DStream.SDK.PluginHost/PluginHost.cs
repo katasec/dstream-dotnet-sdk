@@ -1,11 +1,11 @@
 ﻿using Grpc.Core;
 using HCLog.Net;
 using Katasec.DStream.Abstractions;
-using Katasec.DStream.SDK;
+using Katasec.DStream.SDK.Core;
 using System.Net;
 using Proto = Katasec.DStream.Proto;
 
-namespace Katasec.DStream.Host.Bridge;
+namespace Katasec.DStream.SDK.PluginHost;
 
 public static class PluginHost
 {

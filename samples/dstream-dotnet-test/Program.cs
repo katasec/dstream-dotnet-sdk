@@ -1,7 +1,7 @@
-using Katasec.DStream.Host.Bridge;
+using Katasec.DStream.SDK.PluginHost;
 using Katasec.DStream.Abstractions;
 using HCLog.Net;
-using Katasec.DStream.SDK;
+using Katasec.DStream.SDK.Core;
 
 // Entry point for the plugin. 
 // A plugin has code (GenericCounterPlugin) and config (GenericCounterConfig).

@@ -11,19 +11,13 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{7361
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0C88DD14-F956-CE84-757C-A364CCF449FC}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "legacy", "legacy", "{663D2DBD-2DA4-46E3-BCD6-7418451A8321}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Katasec.DStream.Plugin", "legacy\Katasec.DStream.Plugin\Katasec.DStream.Plugin.csproj", "{E15EB717-BC0D-4EA2-8F1C-2F129E413E41}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Katasec.DStream.Providers", "legacy\Katasec.DStream.Providers\Katasec.DStream.Providers.csproj", "{D7CDC48E-2053-472B-A998-129521C841B8}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Katasec.DStream.Abstractions", "sdk\Katasec.DStream.Abstractions\Katasec.DStream.Abstractions.csproj", "{2BB80B40-2965-48E0-A729-630C5D2CF025}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Katasec.DStream.Host.Bridge", "sdk\Katasec.DStream.Host.Bridge\Katasec.DStream.Host.Bridge.csproj", "{D2D665C4-320B-462C-91A0-718E9E81D2A0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Katasec.DStream.SDK.PluginHost", "sdk\Katasec.DStream.SDK.PluginHost\Katasec.DStream.SDK.PluginHost.csproj", "{D2D665C4-320B-462C-91A0-718E9E81D2A0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Katasec.DStream.SDK", "sdk\Katasec.DStream.SDK\Katasec.DStream.SDK.csproj", "{1A69D5D8-4AE0-4E64-8401-6AB9015B442F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Katasec.DStream.SDK.Core", "sdk\Katasec.DStream.SDK.Core\Katasec.DStream.SDK.Core.csproj", "{1A69D5D8-4AE0-4E64-8401-6AB9015B442F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Katasec.DStream.Provider.AsbQueue", "providers\Katasec.DStream.Provider.AsbQueue\Katasec.DStream.Provider.AsbQueue.csproj", "{6FD4C7DA-E8F3-4D58-88D0-038442A5311B}"
 EndProject
@@ -47,30 +41,6 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{E15EB717-BC0D-4EA2-8F1C-2F129E413E41}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{E15EB717-BC0D-4EA2-8F1C-2F129E413E41}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{E15EB717-BC0D-4EA2-8F1C-2F129E413E41}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{E15EB717-BC0D-4EA2-8F1C-2F129E413E41}.Debug|x64.Build.0 = Debug|Any CPU
-		{E15EB717-BC0D-4EA2-8F1C-2F129E413E41}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{E15EB717-BC0D-4EA2-8F1C-2F129E413E41}.Debug|x86.Build.0 = Debug|Any CPU
-		{E15EB717-BC0D-4EA2-8F1C-2F129E413E41}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E15EB717-BC0D-4EA2-8F1C-2F129E413E41}.Release|Any CPU.Build.0 = Release|Any CPU
-		{E15EB717-BC0D-4EA2-8F1C-2F129E413E41}.Release|x64.ActiveCfg = Release|Any CPU
-		{E15EB717-BC0D-4EA2-8F1C-2F129E413E41}.Release|x64.Build.0 = Release|Any CPU
-		{E15EB717-BC0D-4EA2-8F1C-2F129E413E41}.Release|x86.ActiveCfg = Release|Any CPU
-		{E15EB717-BC0D-4EA2-8F1C-2F129E413E41}.Release|x86.Build.0 = Release|Any CPU
-		{D7CDC48E-2053-472B-A998-129521C841B8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D7CDC48E-2053-472B-A998-129521C841B8}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D7CDC48E-2053-472B-A998-129521C841B8}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{D7CDC48E-2053-472B-A998-129521C841B8}.Debug|x64.Build.0 = Debug|Any CPU
-		{D7CDC48E-2053-472B-A998-129521C841B8}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{D7CDC48E-2053-472B-A998-129521C841B8}.Debug|x86.Build.0 = Debug|Any CPU
-		{D7CDC48E-2053-472B-A998-129521C841B8}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D7CDC48E-2053-472B-A998-129521C841B8}.Release|Any CPU.Build.0 = Release|Any CPU
-		{D7CDC48E-2053-472B-A998-129521C841B8}.Release|x64.ActiveCfg = Release|Any CPU
-		{D7CDC48E-2053-472B-A998-129521C841B8}.Release|x64.Build.0 = Release|Any CPU
-		{D7CDC48E-2053-472B-A998-129521C841B8}.Release|x86.ActiveCfg = Release|Any CPU
-		{D7CDC48E-2053-472B-A998-129521C841B8}.Release|x86.Build.0 = Release|Any CPU
 		{2BB80B40-2965-48E0-A729-630C5D2CF025}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{2BB80B40-2965-48E0-A729-630C5D2CF025}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2BB80B40-2965-48E0-A729-630C5D2CF025}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -184,8 +154,6 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{E15EB717-BC0D-4EA2-8F1C-2F129E413E41} = {663D2DBD-2DA4-46E3-BCD6-7418451A8321}
-		{D7CDC48E-2053-472B-A998-129521C841B8} = {663D2DBD-2DA4-46E3-BCD6-7418451A8321}
 		{2BB80B40-2965-48E0-A729-630C5D2CF025} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{D2D665C4-320B-462C-91A0-718E9E81D2A0} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{1A69D5D8-4AE0-4E64-8401-6AB9015B442F} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
