@@ -7,7 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <SelfContained>true</SelfContained>
-    <PublishSingleFile>true</PublishSingleFile> <!-- Optional: bundle into a single file --> 
+    <PublishSingleFile>true</PublishSingleFile> <!-- Optional: bundle into a single file -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed>false</PublishTrimmed> <!-- Disable trimming to avoid issues with gRPC -->
   </PropertyGroup>
 
   <ItemGroup>
@@ -29,6 +31,5 @@
   <ItemGroup>
     <ProjectReference Include="..\..\sdk\Katasec.DStream.SDK.PluginHost\Katasec.DStream.SDK.PluginHost.csproj" />
   </ItemGroup>
-
 
 </Project>

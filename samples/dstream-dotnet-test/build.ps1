@@ -26,6 +26,13 @@ function Get-Rid
         'Arm'   { 'arm' }
     }
 
+    # WORKAROUND: gRPC.Core doesn't have native ARM64 libraries for macOS
+    # Use x64 instead to run under Rosetta 2 translation
+    if ($IsMacOS -and $arch -eq 'arm64') {
+        Write-Host "→ ARM64 macOS detected: Using osx-x64 target for gRPC compatibility (runs under Rosetta 2)"
+        $arch = 'x64'
+    }
+
     return "$os-$arch"
 }
 
@@ -54,13 +61,17 @@ switch ($Task)
         Write-Host '→ Publishing…'
         $rid = Get-Rid          # e.g. win-x64, linux-arm64, osx-x64
         Write-Host "→ Target RID: $rid"
-        dotnet publish dstream-dotnet-test.csproj -c Release -r $rid -p:DebugType=none -o out
+        # Use full path to dotnet on macOS
+        $dotnetCmd = if ($IsMacOS) { '/usr/local/share/dotnet/dotnet' } else { 'dotnet' }
+        & $dotnetCmd publish dstream-dotnet-test.csproj -c Release -r $rid -p:DebugType=none -o out
         # dotnet publish dstream-dotnet-test.csproj -c Release -r win-x64 -p:DebugType=none -o out
     }
     'clean' {
         Write-Host '→ Cleaning…'
-        dotnet clean
-        Remove-Item -Recurse -Force out -ErrorAction SilentlyContinue
+        # Force remove problematic cache directories first
+        Remove-Item -Recurse -Force obj, bin, out -ErrorAction SilentlyContinue
+        $dotnetCmd = if ($IsMacOS) { '/usr/local/share/dotnet/dotnet' } else { 'dotnet' }
+        & $dotnetCmd clean
     }
     default {
         Show-Help
