@@ -1,131 +1,150 @@
 # DStream .NET SDK
 
-A modern .NET SDK for building **DStream plugins**.
-Plugins are loaded by the DStream CLI via [HashiCorp go-plugin](https://github.com/hashicorp/go-plugin) over gRPC.  
-Each plugin defines a **Config**, a **Provider**, and implements one or more provider interfaces (`IInputProvider`, `IOutputProvider`, etc).
+A modern .NET SDK for building **DStream providers** using stdin/stdout communication.
+Providers are simple standalone binaries that communicate with the DStream CLI via JSON over stdin/stdout pipes.  
+Each provider defines a **Config**, a **Provider class**, and implements either `IInputProvider` or `IOutputProvider`.
 
 ## Quick Start
 
 **1. Reference the SDK:**
 ```xml
-<ProjectReference Include="Katasec.DStream.SDK.PluginHost" />
+<ProjectReference Include="../dstream-dotnet-sdk/sdk/Katasec.DStream.Abstractions/Katasec.DStream.Abstractions.csproj" />
+<ProjectReference Include="../dstream-dotnet-sdk/sdk/Katasec.DStream.SDK.Core/Katasec.DStream.SDK.Core.csproj" />
 ```
 
-**2. Create your plugin:**
+**2. Create your provider (top-level statements):**
 ```csharp
-using Katasec.DStream.SDK.PluginHost;
-using Katasec.DStream.SDK.Core;
 using Katasec.DStream.Abstractions;
+using Katasec.DStream.SDK.Core;
 
-await PluginHost.Run<MyPlugin, MyConfig>();
+// Simple top-level program entry point
+await StdioProviderHost.RunInputProviderAsync<MyInputProvider, MyConfig>();
+// or
+await StdioProviderHost.RunOutputProviderAsync<MyOutputProvider, MyConfig>();
 ```
 
-**That's it!** The SDK handles all the gRPC plumbing, configuration binding, and HashiCorp go-plugin protocol details.
+**That's it!** The SDK handles all the stdin/stdout plumbing, configuration parsing, JSON serialization, and process lifecycle management.
 
 ---
 
-## Plugin Basics
+## Provider Basics
 
 1. **Config class**  
-   Each plugin defines a config model for its settings. Example:
+   Each provider defines a config model for its settings. Example:
 
    ```csharp
-   public sealed class GenericCounterConfig
+   public sealed record CounterConfig
    {
-       public int Interval { get; set; } = 5000;
+       public int Interval { get; init; } = 1000;
+       public int MaxCount { get; init; } = 0;
    }
    ```
 
 2. **Provider base**  
-   Providers inherit from `ProviderBase<TConfig>`. This gives them access to `Config` (populated by the host at runtime).
+   Providers inherit from `ProviderBase<TConfig>`. This gives them access to `Config` (populated by the SDK at runtime).
 
    ```csharp
    public abstract class ProviderBase<TConfig>
    {
        protected TConfig Config { get; private set; }
-       protected IPluginContext Context { get; private set; }
+       protected IPluginContext Ctx { get; private set; }
        public void Initialize(TConfig config, IPluginContext ctx) { ... }
    }
    ```
 
 3. **Provider interfaces**  
-   - `IInputProvider`: produces `Envelope` events (`ReadAsync`).  
-   - `IOutputProvider`: consumes `Envelope` events (`WriteAsync`).  
-   - A provider can implement one, both, or future extensions.
+   - `IInputProvider`: produces `Envelope` events via `IAsyncEnumerable<Envelope> ReadAsync()`.  
+   - `IOutputProvider`: consumes `Envelope` events via `Task WriteAsync(IEnumerable<Envelope> batch, ...)`.  
+   - Each provider implements exactly one interface (input OR output, not both).
 
 ---
 
-## Example: Counter Plugin (Input Provider)
+## Example: Counter Input Provider
 
-This plugin generates an incrementing counter every `Interval` milliseconds.
+This provider generates an incrementing counter every `Interval` milliseconds.
 
 ```csharp
-public sealed class GenericCounterPlugin : ProviderBase<GenericCounterConfig>, IInputProvider
+using System.Runtime.CompilerServices;
+using Katasec.DStream.Abstractions;
+using Katasec.DStream.SDK.Core;
+
+// Simple top-level program entry point
+await StdioProviderHost.RunInputProviderAsync<CounterInputProvider, CounterConfig>();
+
+public class CounterInputProvider : ProviderBase<CounterConfig>, IInputProvider
 {
     public async IAsyncEnumerable<Envelope> ReadAsync(IPluginContext ctx, [EnumeratorCancellation] CancellationToken ct)
     {
-        var log = (HCLog.Net.HCLogger)ctx.Logger;
-        log.Info($"counter_start interval={Config.Interval}");
-
-        var seq = 0;
+        var count = 0;
+        
         while (!ct.IsCancellationRequested)
         {
-            await Task.Delay(Config.Interval, ct);
-            seq++;
+            count++;
+            
+            // Stop if max count reached
+            if (Config.MaxCount > 0 && count > Config.MaxCount)
+                break;
 
-            var meta = new Dictionary<string, object?> 
-            { 
-                ["seq"] = seq, 
-                ["source"] = "counter" 
+            // Create counter data
+            var data = new { value = count, timestamp = DateTimeOffset.UtcNow };
+            var metadata = new Dictionary<string, object?>
+            {
+                ["seq"] = count,
+                ["provider"] = "counter-input-provider"
             };
-
-            yield return new Envelope(seq, meta);
+            
+            yield return new Envelope(data, metadata);
+            
+            await Task.Delay(Config.Interval, ct);
         }
-
-        log.Info("counter_complete");
     }
+}
+
+public sealed record CounterConfig
+{
+    public int Interval { get; init; } = 1000;
+    public int MaxCount { get; init; } = 0;
 }
 ```
 
 ---
 
-## Running the Plugin
+## Running Providers
 
-In your sample app:
+Providers are standalone binaries that communicate via stdin/stdout:
 
-```csharp
-using Katasec.DStream.SDK.PluginHost;
-using Katasec.DStream.SDK.Core;
-using Katasec.DStream.Abstractions;
+```bash
+# Test input provider directly:
+echo '{"interval": 500, "max_count": 3}' | ./counter-input-provider
 
-await PluginHost.Run<GenericCounterPlugin, GenericCounterConfig>();
+# Test output provider directly:
+echo '{"outputFormat": "simple"}' | ./console-output-provider
+
+# Test full pipeline manually:
+echo '{"interval": 500, "max_count": 3}' | ./counter-input-provider 2>/dev/null | echo '{"outputFormat": "simple"}' | ./console-output-provider
 ```
-
-This bootstraps the gRPC server, wires in your plugin, and hands control to the DStream CLI.
 
 ---
 
-## HCL Configuration
+## Task Configuration (HCL)
 
-Your plugin can be launched by DStream CLI using `dstream.hcl`:
+Your providers can be orchestrated by DStream CLI using `dstream.hcl`:
 
 ```hcl
-task "dotnet-counter" {
-  type        = "plugin"
-  plugin_path = "../dstream-dotnet-sdk/samples/dstream-dotnet-test/out/dstream-dotnet-test"
-
-  config {
-    interval = 1000
-  }
-
+task "counter-to-console" {
   input {
-    provider = "null"
-    config {}
+    provider_path = "./counter-input-provider"
+    config = {
+      interval = 1000
+      max_count = 10
+    }
   }
 
   output {
-    provider = "console"
-    config { format = "json" }
+    provider_path = "./console-output-provider"
+    config = {
+      outputFormat = "simple"
+    }
   }
 }
 ```
@@ -134,30 +153,32 @@ task "dotnet-counter" {
 
 ## SDK Architecture
 
-The DStream .NET SDK follows modern patterns:
+The DStream .NET SDK uses a simple stdin/stdout architecture:
 
-- **`Katasec.DStream.SDK.PluginHost`** - Main package for plugin developers (reference this)
-- **`Katasec.DStream.SDK.Core`** - Base classes (`ProviderBase<TConfig>`)
-- **`Katasec.DStream.Abstractions`** - Core interfaces (`IInputProvider`, `IOutputProvider`)
+- **`Katasec.DStream.Abstractions`** - Core interfaces (`IInputProvider`, `IOutputProvider`, `Envelope`)
+- **`Katasec.DStream.SDK.Core`** - Base classes (`ProviderBase<TConfig>`) and `StdioProviderHost`
 
-### Plugin Development Flow
+### Provider Development Flow
 
-1. **Reference SDK**: `Katasec.DStream.SDK.PluginHost`
-2. **Define Config**: POCO class for your plugin settings
-3. **Implement Provider**: Inherit from `ProviderBase<TConfig>`
-4. **Bootstrap**: Call `PluginHost.Run<TPlugin, TConfig>()`
+1. **Reference SDK**: Add project references to `Abstractions` and `SDK.Core`
+2. **Define Config**: Record class for your provider settings
+3. **Implement Provider**: Inherit from `ProviderBase<TConfig>` and implement `IInputProvider` or `IOutputProvider`
+4. **Bootstrap**: Call `StdioProviderHost.RunInputProviderAsync<>()` or `RunOutputProviderAsync<>()`
 
-### Integration
+### Architecture Benefits
 
-✅ **Modern Architecture**:
-- **Sources** = `IInputProvider` (produce events, like the counter)
-- **Sinks** = `IOutputProvider` (consume events, like ASB or Console)
-- **Config** is automatically bound from HCL → gRPC → `TConfig`
-- **Clean builds** with no warnings from generated code
-- **Simple developer experience** - reference one package and go!
+✅ **Unix Pipeline Philosophy**:
+- **Input Providers** = `IInputProvider` (generate data streams, like counters, CDC, APIs)
+- **Output Providers** = `IOutputProvider` (consume data streams, like databases, queues, files)
+- **Communication** = JSON over stdin/stdout (universal, testable, debuggable)
+- **Process Model** = One binary per provider (independent, scalable, fault-isolated)
+- **Configuration** = JSON via stdin (simple, language-agnostic)
+- **Developer Experience** = Write business logic, SDK handles everything else
 
 ## Getting Started
 
-See the [sample project](./samples/dstream-dotnet-test/) for a complete working example.
+See the example providers:
+- [Counter Input Provider](https://github.com/katasec/dstream-counter-input-provider)
+- [Console Output Provider](https://github.com/katasec/dstream-console-output-provider)
 
 For detailed development guidance, see [WARP.md](./WARP.md).
