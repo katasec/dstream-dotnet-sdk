@@ -150,6 +150,321 @@ await PluginHost.Run<MyPlugin, PluginConfig>();
 
 This follows AWS SDK patterns where developers reference the main SDK package (like `AWS.SDK.S3`) rather than internal implementation details.
 
+## Architectural Decisions
+
+### Core Architecture: Reader/Writer Model over gRPC
+
+**Decision:** DStream uses a **Reader/Writer abstraction** where input providers are essentially streaming readers and output providers are streaming writers, communicating over gRPC via HashiCorp go-plugin protocol.
+
+**The Key Insight: Native Streaming APIs over gRPC**
+
+This is fundamentally **"Native streaming patterns for structured data over gRPC"** - each language uses its idiomatic streaming abstractions:
+
+**Language-Specific API Mappings:**
+
+**Go (CLI Orchestration):**
+```go
+// Input Provider = io.Reader pattern
+type InputProvider interface {
+    Read(ctx context.Context) (<-chan Envelope, error)
+}
+
+// Output Provider = io.Writer pattern  
+type OutputProvider interface {
+    Write(ctx context.Context, envelopes <-chan Envelope) error
+}
+
+// Go CLI = Data Pump (like Unix pipe)
+func PumpData(reader InputProvider, writer OutputProvider) {
+    envelopes, _ := reader.Read(ctx)
+    writer.Write(ctx, envelopes)
+}
+```
+
+**.NET (Provider Implementation):**
+```csharp
+// Input Provider = IAsyncEnumerable<T> (streaming read)
+public interface IInputProvider : IProvider
+{
+    IAsyncEnumerable<Envelope> ReadAsync(IPluginContext ctx, CancellationToken ct);
+    // ↑ Like Stream.ReadAsync() but for structured data
+}
+
+// Output Provider = async batch writer
+public interface IOutputProvider : IProvider  
+{
+    Task WriteAsync(IEnumerable<Envelope> batch, IPluginContext ctx, CancellationToken ct);
+    // ↑ Like Stream.WriteAsync() but for structured data
+}
+```
+
+**Runtime Architecture:**
+```
+┌─────────────────┐    gRPC     ┌─────────────────┐    gRPC     ┌─────────────────┐
+│  Input Provider │────────────▶│     Go CLI      │────────────▶│ Output Provider │
+│   (.NET Stream) │             │ (io.Reader/     │             │   (.NET Stream) │  
+│                 │             │  io.Writer)     │             │                 │
+└─────────────────┘             └─────────────────┘             └─────────────────┘
+```
+
+**Cross-Language Composability:**
+```bash
+# Any language can implement providers using native patterns
+dotnet-mssql-provider → go-cli → rust-kafka-provider
+python-api-provider → go-cli → java-elasticsearch-provider
+go-counter-provider → go-cli → dotnet-console-provider
+```
+
+**Why this works:**
+- **Native patterns:** Each language uses its idiomatic streaming APIs
+- **Familiar abstractions:** Go = `io.Reader`/`io.Writer`, .NET = `IAsyncEnumerable`/`WriteAsync`
+- **Composable:** Any reader can connect to any writer, regardless of language
+- **gRPC abstraction:** Network transport is hidden behind native APIs
+- **Battle-tested:** Built on proven streaming patterns from each ecosystem
+
+### Provider Distribution: Independent Binaries
+
+**Decision:** Each input/output provider is an **independent executable binary** distributed as OCI images.
+
+**Options Considered:**
+
+**❌ Option A: Library Loading (NuGet packages)**
+- Providers as NuGet packages loaded into single plugin binary
+- Complex dependency management
+- Coordination required between provider authors
+- Difficult ecosystem growth
+
+**✅ Option B: Independent Binaries (Chosen)**
+- Each provider is its own executable
+- Distributed via OCI container registries
+- Zero coordination between provider authors
+- Natural ecosystem growth
+
+**Configuration Example:**
+```hcl
+task "sql-to-azure" {
+  input {
+    provider_ref = "ghcr.io/katasec/mssql-cdc:v1.0.0"
+    config { connection_string = "..." }
+  }
+  output {
+    provider_ref = "ghcr.io/katasec/azure-servicebus:v2.1.0"
+    config { connection_string = "..." }
+  }
+}
+```
+
+**Benefits:**
+- **Publishing:** Anyone can publish a provider instantly
+- **Versioning:** Granular versioning per provider
+- **Security:** Audit each provider independently
+- **Ecosystem:** No gatekeepers, natural marketplace emerges
+
+**Trade-offs:**
+- Higher runtime overhead (2+ processes vs 1)
+- More complex CLI orchestration
+- Inter-process communication complexity
+
+### Transform Strategy: Queue Chaining
+
+**Decision:** Transforms happen via **queue chaining** rather than separate transform processes.
+
+**Options Considered:**
+
+**❌ Option A: Separate Transform Process**
+```
+Go CLI → Input Provider → Transform Provider → Output Provider
+```
+- Too complex (3-process orchestration)
+- Complex IPC between all components
+
+**✅ Option B: Embedded Transforms (Chosen)**
+- Simple transforms embedded in input/output providers
+- Complex transforms via queue chaining
+
+**✅ Option C: Queue Chaining (Chosen)**
+```
+Input → ASB Queue → Transform Process → ASB Queue → Output
+```
+
+**Implementation Patterns:**
+
+**Simple Inline Transforms:**
+```csharp
+public async IAsyncEnumerable<Envelope> ReadAsync(IPluginContext ctx, CancellationToken ct)
+{
+    await foreach (var rawEvent in ReadFromSource(ct))
+    {
+        // Transform before emitting
+        var transformed = CleanAndNormalize(rawEvent);
+        yield return new Envelope(transformed, metadata);
+    }
+}
+```
+
+**Queue Chaining:**
+```hcl
+# Stage 1: Raw ingestion
+task "ingest" {
+  input  { provider_ref = "mssql-cdc" }
+  output { provider_ref = "azure-servicebus"; queue = "raw-events" }
+}
+
+# Stage 2: Transform
+task "transform" {
+  input  { provider_ref = "azure-servicebus"; queue = "raw-events" }
+  output { provider_ref = "azure-servicebus"; queue = "enriched-events" }
+}
+
+# Stage 3: Final destination  
+task "sink" {
+  input  { provider_ref = "azure-servicebus"; queue = "enriched-events" }
+  output { provider_ref = "snowflake-sink" }
+}
+```
+
+**Benefits:**
+- **Fault tolerance:** Queue durability between stages
+- **Scalability:** Independent scaling per stage
+- **Operations:** Clear monitoring boundaries
+- **Testing:** Easy replay and debugging
+
+### Provider Interface Design
+
+**Input Provider Interface:**
+```csharp
+public interface IInputProvider : IProvider
+{
+    IAsyncEnumerable<Envelope> ReadAsync(IPluginContext ctx, CancellationToken ct);
+}
+```
+
+**Output Provider Interface:**
+```csharp
+public interface IOutputProvider : IProvider
+{
+    Task WriteAsync(IEnumerable<Envelope> batch, IPluginContext ctx, CancellationToken ct);
+}
+```
+
+**Core Data Structure:**
+```csharp
+public readonly record struct Envelope(object Payload, IReadOnlyDictionary<string, object?> Meta);
+```
+
+### Development Workflow
+
+**Provider Development:**
+1. Implement `IInputProvider` or `IOutputProvider`
+2. Build as self-contained executable
+3. Package as OCI image
+4. Publish to container registry
+5. Users reference via `provider_ref` in HCL
+
+**Runtime Workflow:**
+1. `dstream init` - Downloads required provider images
+2. `dstream run` - Launches input/output providers as separate processes
+3. Go CLI orchestrates data flow between providers
+4. Providers communicate via gRPC using HashiCorp go-plugin protocol
+
+**Target Ecosystem:**
+- **Input Providers:** SQL Server CDC, PostgreSQL CDC, Kafka, REST APIs, File watchers
+- **Output Providers:** Azure Service Bus, Amazon SQS, Snowflake, Elasticsearch, webhooks
+- **Transform Providers:** Data enrichment, validation, aggregation, ML inference
+
+This architecture enables a "Terraform for data streaming" ecosystem where providers are composable, independently versioned, and community-contributed.
+
+## Current Architecture Status & Evolution Plan
+
+### Background
+
+DStream started with SQL Server CDC embedded in the Go CLI, then evolved to support Go plugins (like [dstream-ingester-mssql](https://github.com/katasec/dstream-ingester-mssql)). The .NET plugin support was added to enable .NET developer teams to contribute to the ecosystem.
+
+### Current State (Working)
+
+**✅ Go CLI ↔ .NET Plugin Communication**
+- gRPC communication via HashiCorp go-plugin protocol works
+- Configuration passing from HCL → Go CLI → .NET plugin works
+- Basic .NET counter plugin runs successfully
+
+**❌ .NET Output Provider Routing (Broken)**
+- Current `PluginServiceImpl.cs` only handles input providers
+- Output configuration is received but ignored
+- `ctx.Emit()` just logs instead of routing to output providers
+
+### Architecture Evolution Plan
+
+**Phase 1: Fix .NET Plugin Architecture (Current)**
+```
+Go CLI → .NET Plugin Process
+             ↓
+         (Input + Output routing)
+```
+
+**Immediate Goals:**
+1. Fix .NET `PluginServiceImpl` to parse output provider config
+2. Implement provider registry/factory pattern
+3. Route data: Input Provider → Output Provider (within same process)
+4. Get console output working with counter input
+
+**Phase 2: Separate .NET Provider Binaries (Future)**
+```
+Go CLI → Input Provider Binary (.NET)
+       ↓
+       → Output Provider Binary (.NET)
+```
+
+**Future Goals:**
+1. Evolve Go CLI to orchestrate separate input/output processes
+2. Create provider templates and OCI distribution
+3. Build ecosystem of independent provider binaries
+
+### Current Implementation Priority
+
+**Step 1: Fix Output Provider Routing**
+- Parse `StartRequest.Output` configuration
+- Instantiate appropriate output provider (ConsoleOutputProvider)
+- Route `ctx.Emit()` to output provider instead of logging
+
+**Step 2: Validate Input Provider Pattern**
+- Ensure input providers work correctly in new architecture
+- Test with counter and future SQL Server CDC provider
+
+**Step 3: Build Provider Ecosystem**
+- Create MSSQL CDC input provider
+- Create Azure Service Bus output provider
+- Document provider development patterns
+
+### Development Practices
+
+**Critical: Incremental Changes with Validation**
+
+Every change must be validated to ensure we don't break the working communication:
+
+1. **Make localized changes** - small, focused modifications
+2. **Compile and test** after each change:
+   ```bash
+   # Build the plugin
+   cd samples/dstream-dotnet-test
+   pwsh -c "./build.ps1 clean && ./build.ps1 publish"
+   
+   # Test end-to-end communication
+   cd ~/progs/dstream
+   go run . run dotnet-counter
+   
+   # Verify: Should see counter data flowing from .NET → Go CLI
+   ```
+3. **Validate data flow** - ensure counter data still flows correctly
+4. **Only proceed** if the basic communication still works
+
+**Current Working Baseline:**
+- ✅ Go CLI launches .NET plugin via gRPC
+- ✅ .NET counter generates data every 500ms  
+- ✅ Data flows back to Go CLI and is logged
+- ✅ Graceful shutdown on Ctrl+C
+
+This baseline must never be broken during development.
+
 ### Integration with DStream CLI
 
 The DStream CLI is a Go application located at `C:\Users\ameer.deen\progs\dstream` that serves as the host for .NET plugins. The integration works as follows:

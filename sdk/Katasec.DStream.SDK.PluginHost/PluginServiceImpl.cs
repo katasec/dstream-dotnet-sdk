@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
@@ -36,6 +36,20 @@ public sealed class PluginServiceImpl<TProvider, TConfig> : Proto.Plugin.PluginB
 
         _config = BindConfig(raw) ?? new TConfig();
         _log.Info($"[CONFIG] bound={JsonSerializer.Serialize(_config)}");
+        
+        // Parse output provider configuration  
+        var outputProvider = request.Output?.Provider ?? "";
+        var outputConfigJson = request.Output?.Config?.ToString() ?? "{}";
+        _log.Info($"[OUTPUT] provider={outputProvider} config={outputConfigJson}");
+        
+        // Simple validation: create console output provider directly
+        IOutputProvider? outputProviderInstance = null;
+        if (outputProvider == "console")
+        {
+            // TODO: Replace with proper provider loading in separate binaries phase
+            outputProviderInstance = CreateConsoleProviderDirect(outputConfigJson);
+            _log.Info($"[OUTPUT] Console provider created for validation");
+        }
 
         // init provider once
         if (_provider is null)
@@ -52,7 +66,7 @@ public sealed class PluginServiceImpl<TProvider, TConfig> : Proto.Plugin.PluginB
         }
 
         var ct = context.CancellationToken; // will cancel when host stops the task
-        var ctx = MakeCtx();
+        var ctx = MakeCtx(outputProviderInstance);
 
         try
         {
@@ -66,13 +80,22 @@ public sealed class PluginServiceImpl<TProvider, TConfig> : Proto.Plugin.PluginB
     }
 
 
-    private IPluginContext MakeCtx() =>
-        new LocalContext(_log, _services, async (env, _) =>
+    private IPluginContext MakeCtx(IOutputProvider? outputProvider = null) =>
+        new LocalContext(_log, _services, async (env, ct) =>
         {
-            // Minimal emit bridge: log payload + meta
-            var meta = env.Meta is null ? "" : JsonSerializer.Serialize(env.Meta);
-            _log.Info($"emit payload={env.Payload} meta={meta}");
-            await Task.CompletedTask;
+            if (outputProvider != null)
+            {
+                // Route to actual output provider  
+                var outputCtx = new LocalContext(_log, _services, async (_, _) => { /* no nested routing */ });
+                await outputProvider.WriteAsync(new[] { env }, outputCtx, ct);
+                _log.Info($"routed payload={env.Payload} to output provider");
+            }
+            else
+            {
+                // Fallback: log payload + meta (original behavior)
+                var meta = env.Meta is null ? "" : JsonSerializer.Serialize(env.Meta);
+                _log.Info($"emit payload={env.Payload} meta={meta}");
+            }
         });
 
     private static TConfig? BindConfig(string rawJson)
@@ -99,5 +122,47 @@ public sealed class PluginServiceImpl<TProvider, TConfig> : Proto.Plugin.PluginB
     private sealed class ServiceProviderStub : IServiceProvider
     {
         public object? GetService(System.Type serviceType) => null;
+    }
+    
+    private IOutputProvider? CreateConsoleProviderDirect(string configJson)
+    {
+        try
+        {
+            // Direct instantiation for validation - will be replaced in separate binaries phase
+            var loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetName().Name).ToArray();
+            _log.Info($"Loaded assemblies: {string.Join(", ", loadedAssemblies)}");
+            
+            var consoleAssembly = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(a => a.GetName().Name == "Katasec.DStream.Provider.Console");
+                
+            if (consoleAssembly == null)
+            {
+                _log.Warn("Console provider assembly not loaded");
+                return null;
+            }
+            
+            var providerType = consoleAssembly.GetType("Katasec.DStream.Provider.ConsoleOut.ConsoleOutputProvider");
+            var configType = consoleAssembly.GetType("Katasec.DStream.Provider.ConsoleOut.ConsoleOutputConfig");
+            
+            if (providerType == null || configType == null)
+            {
+                _log.Warn("Console provider types not found");
+                return null;
+            }
+            
+            var provider = Activator.CreateInstance(providerType) as IOutputProvider;
+            var config = JsonSerializer.Deserialize(configJson, configType);
+            
+            // Initialize the provider
+            var initMethod = providerType.GetMethod("Initialize");
+            initMethod?.Invoke(provider, new[] { config, MakeCtx() });
+            
+            return provider;
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Failed to create console provider: {ex.Message}");
+            return null;
+        }
     }
 }

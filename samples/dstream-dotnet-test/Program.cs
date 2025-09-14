@@ -2,10 +2,15 @@ using Katasec.DStream.SDK.PluginHost;
 using Katasec.DStream.Abstractions;
 using HCLog.Net;
 using Katasec.DStream.SDK.Core;
+using Katasec.DStream.Provider.ConsoleOut; // Force assembly loading
 
 // Entry point for the plugin. 
 // A plugin has code (GenericCounterPlugin) and config (GenericCounterConfig).
 // and is run by the host (PluginHost).
+
+// Force console provider assembly to load
+_ = new ConsoleOutputProvider();
+
 await PluginHost.Run<GenericCounterPlugin, GenericCounterConfig>();
 
 
