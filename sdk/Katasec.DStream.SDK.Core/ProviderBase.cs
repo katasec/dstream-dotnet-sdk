@@ -21,19 +21,4 @@ public abstract class ProviderBase<TConfig>
     /// Optional hook after Initialize is called.
     /// </summary>
     protected virtual void OnInitialized() { }
-
-    /// <summary>
-    /// Helper to emit downstream envelopes.
-    /// </summary>
-    protected Task EmitAsync(object payload, CancellationToken ct, IDictionary<string, object?>? meta = null)
-        => Ctx.Emit(new Envelope(payload, (meta ?? new Dictionary<string, object?>()).AsReadOnly()), ct);
-}
-
-
-
-internal static class DictExtensions
-{
-    public static IReadOnlyDictionary<TKey, TValue> AsReadOnly<TKey, TValue>(
-        this IDictionary<TKey, TValue> d) where TKey : notnull
-        => d is IReadOnlyDictionary<TKey, TValue> ro ? ro : new Dictionary<TKey, TValue>(d);
 }

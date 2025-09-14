@@ -4,28 +4,34 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Development Commands
 
+### Environment Configuration
+
+**PowerShell on macOS:**
+- .NET path: `/usr/local/share/dotnet/dotnet`
+- Use full path when running dotnet commands in PowerShell
+
 ### Building the Solution
 ```bash
 # Build the entire solution
-dotnet build dstream-dotnet-sdk.sln
+/usr/local/share/dotnet/dotnet build dstream-dotnet-sdk.sln
 
 # Build a specific project
-dotnet build sdk/Katasec.DStream.SDK.Core/Katasec.DStream.SDK.Core.csproj
+/usr/local/share/dotnet/dotnet build sdk/Katasec.DStream.SDK.Core/Katasec.DStream.SDK.Core.csproj
 
 # Build in release mode
-dotnet build dstream-dotnet-sdk.sln -c Release
+/usr/local/share/dotnet/dotnet build dstream-dotnet-sdk.sln -c Release
 ```
 
 ### Running Tests
 ```bash
 # Run all tests
-dotnet test dstream-dotnet-sdk.sln
+/usr/local/share/dotnet/dotnet test dstream-dotnet-sdk.sln
 
 # Run tests for a specific project
-dotnet test tests/Providers.AsbQueue.Tests/Providers.AsbQueue.Tests.csproj
+/usr/local/share/dotnet/dotnet test tests/Providers.AsbQueue.Tests/Providers.AsbQueue.Tests.csproj
 
 # Run tests with verbose output
-dotnet test dstream-dotnet-sdk.sln -v normal
+/usr/local/share/dotnet/dotnet test dstream-dotnet-sdk.sln -v normal
 ```
 
 ### Sample Plugin Development
@@ -40,9 +46,9 @@ cd samples/dstream-dotnet-test
 ./build.ps1 clean
 
 # Manual publish (cross-platform)
-dotnet publish dstream-dotnet-test.csproj -c Release -r win-x64 -o out
-dotnet publish dstream-dotnet-test.csproj -c Release -r linux-x64 -o out
-dotnet publish dstream-dotnet-test.csproj -c Release -r osx-x64 -o out
+/usr/local/share/dotnet/dotnet publish dstream-dotnet-test.csproj -c Release -r win-x64 -o out
+/usr/local/share/dotnet/dotnet publish dstream-dotnet-test.csproj -c Release -r linux-x64 -o out
+/usr/local/share/dotnet/dotnet publish dstream-dotnet-test.csproj -c Release -r osx-x64 -o out
 ```
 
 ### Running Plugins via DStream CLI
@@ -69,10 +75,10 @@ go run . run dotnet-counter --log-level debug
 ### Package Management
 ```bash
 # Restore NuGet packages for all projects
-dotnet restore dstream-dotnet-sdk.sln
+/usr/local/share/dotnet/dotnet restore dstream-dotnet-sdk.sln
 
 # Clean all build outputs
-dotnet clean dstream-dotnet-sdk.sln
+/usr/local/share/dotnet/dotnet clean dstream-dotnet-sdk.sln
 ```
 
 ## Architecture Overview
@@ -152,7 +158,52 @@ This follows AWS SDK patterns where developers reference the main SDK package (l
 
 ## Architectural Decisions
 
-### Core Architecture: Reader/Writer Model over gRPC
+### Provider I/O Model: Stdin/Stdout Streaming over gRPC
+er/Writer Model
+
+**Key Insight: One Task = One Command = Three Processes**
+
+DStream uses a **task-centric execution model** where each streaming job runs as an independent task with clean isolation:
+
+```bash
+# Each command runs one isolated streaming task
+dstream run dotnet-counter    # Demo: Counter → Console
+dstream run mssql-cdc         # Production: SQL Server → Azure Service Bus  
+dstream run api-monitor       # API polling → Multiple outputs
+```
+
+**Task Execution Model:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Task: "dotnet-counter"                                     │
+│  ┌─────────────┐   ┌─────────────┐   ┌─────────────────┐   │
+│  │ DStream CLI │   │ Counter     │   │ Console Output  │   │
+│  │ (Process 1) │◄─►│ Input       │◄─►│ Provider        │   │
+│  │             │   │ (Process 2) │   │ (Process 3)     │   │
+│  └─────────────┘   └─────────────┘   └─────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Data Flow: Simple stdin/stdout Piping**
+```
+┌──────────────┐  stdout   ┌─────────────────┐  stdin   ┌─────────────────┐
+│ Input        │  JSON     │ DStream CLI     │  JSON    │ Output          │
+│ Provider     │──────────→│ (Orchestrator)  │─────────→│ Provider        │
+│              │ envelopes │ • Launch tasks  │envelopes │                 │
+│              │           │ • Pipe data     │          │                 │
+│              │           │ • Manage procs  │          │                 │
+└──────────────┘           └─────────────────┘          └─────────────────┘
+```
+
+**Benefits of Task-Based Isolation:**
+- **Process Isolation**: Each task runs independently with no shared state
+- **Simple I/O Model**: Providers only need to handle stdin/stdout (like a single process with input/output)
+- **Easy Testing**: Each provider can be tested independently with shell commands
+- **Clean Shutdown**: Killing CLI process cleanly terminates all 3 processes
+- **Resource Boundaries**: Clear CPU/memory limits per streaming task
+- **Operational Simplicity**: One command = one streaming job (easy monitoring)
+
+### Configuration: HCL-Based Task Definitions
 
 **Decision:** DStream uses a **Reader/Writer abstraction** where input providers are essentially streaming readers and output providers are streaming writers, communicating over gRPC via HashiCorp go-plugin protocol.
 
@@ -240,19 +291,51 @@ go-counter-provider → go-cli → dotnet-console-provider
 - Zero coordination between provider authors
 - Natural ecosystem growth
 
-**Configuration Example:**
+**Task Configuration (HCL):**
 ```hcl
-task "sql-to-azure" {
+# dotnet-counter.hcl - Simple demo task
+task "dotnet-counter" {
   input {
-    provider_ref = "ghcr.io/katasec/mssql-cdc:v1.0.0"
-    config { connection_string = "..." }
+    provider_path = "./counter-input-provider"     # Development: local binary
+    # provider_href = "ghcr.io/org/counter:v1.0.0"  # Production: OCI image
+    config = {
+      interval = 1000
+      max_count = 100
+    }
+  }
+  
+  output {
+    provider_path = "./console-output-provider"     # Development: local binary
+    # provider_href = "ghcr.io/org/console:v1.0.0"   # Production: OCI image
+    config = {
+      outputFormat = "structured"
+    }
+  }
+}
+
+# mssql-cdc.hcl - Production CDC task
+task "mssql-cdc" {
+  input {
+    provider_href = "ghcr.io/katasec/mssql-cdc:v1.0.0"  # Production OCI
+    config = {
+      connection_string = "Server=...;Database=..."
+      tables = ["orders", "customers"]
+    }
   }
   output {
-    provider_ref = "ghcr.io/katasec/azure-servicebus:v2.1.0"
-    config { connection_string = "..." }
+    provider_href = "ghcr.io/katasec/azure-servicebus:v2.1.0"
+    config = {
+      connection_string = "Endpoint=sb://..."
+      topic_name = "cdc-events"
+    }
   }
 }
 ```
+
+**Provider Discovery Evolution:**
+- **Phase 1 (Now)**: `provider_path` for local binaries during development
+- **Phase 2 (Future)**: `provider_href` for OCI container images in production
+- **Configuration**: HCL (not JSON/YAML) - Terraform-style infrastructure-as-code
 
 **Benefits:**
 - **Publishing:** Anyone can publish a provider instantly
@@ -374,6 +457,166 @@ public readonly record struct Envelope(object Payload, IReadOnlyDictionary<strin
 
 This architecture enables a "Terraform for data streaming" ecosystem where providers are composable, independently versioned, and community-contributed.
 
+## Architecture Decision: Unix stdin/stdout vs HashiCorp go-plugin (gRPC)
+
+### Decision Context
+
+DStream was initially designed using HashiCorp's go-plugin framework with gRPC communication, chosen for three key factors:
+1. **Battle-tested**: Proven in Terraform, Vault, Consul, Packer
+2. **Language support**: gRPC works across multiple languages
+3. **Performance**: Binary protocol with efficient serialization
+
+However, during development of the independent provider orchestration model, we evaluated **Unix stdin/stdout pipes** as an alternative IPC mechanism.
+
+### Comparison Analysis
+
+| **Factor** | **HashiCorp go-plugin (gRPC)** | **Unix stdin/stdout** | **Winner** |
+|------------|--------------------------------|------------------------|------------|
+| **🛡️ Battle Tested** | ✅ **Excellent** | ✅ **Legendary** | **stdin/stdout** |
+| | • Used by Terraform, Vault, Consul, Packer | • Unix foundation since 1970s | |
+| | • Handles process lifecycle, crashes, recovery | • Every shell, container, CI/CD system | |
+| | • Plugin discovery and versioning | • Docker, Kubernetes, systemd native | |
+| | • 5+ years production at HashiCorp scale | • **50+ years** in production everywhere | |
+| **🌐 Language Support** | ✅ **Very Good** | ✅ **Universal** | **stdin/stdout** |
+| | • Go (native), .NET, Python, Java, Rust | • **Every programming language** | |
+| | • Requires gRPC libraries and proto files | • Built into language standard libraries | |
+| | • Need to implement plugin interface | • Just read/write text (JSON/CSV/etc.) | |
+| | • Proto compatibility across versions | • No dependencies, just IO streams | |
+| **⚡ Performance** | ✅ **Excellent** | 🤔 **Good** | **Depends on use case** |
+| | • Binary protocol, efficient serialization | • Text-based JSON parsing overhead | |
+| | • Streaming, bidirectional communication | • Sequential pipe processing | |
+| | • Type-safe, schema validation | • String parsing/validation needed | |
+| | • HTTP/2 multiplexing, compression | • Simple pipe buffering | |
+
+### Critical Performance Factor: Interprocess Communication Latency
+
+| **Metric** | **gRPC (TCP/HTTP2)** | **Unix Pipes (stdin/stdout)** | **Winner** |
+|------------|----------------------|-------------------------------|------------|
+| **Base Latency** | ~50-200μs | ~1-10μs | **Pipes** |
+| **Connection Setup** | TCP handshake + HTTP2 setup | Instant (kernel pipe) | **Pipes** |
+| **Memory Copies** | Multiple (network stack) | Single (kernel buffer) | **Pipes** |
+| **Context Switches** | User → Kernel → Network → Kernel → User | User → Kernel → User | **Pipes** |
+| **Protocol Overhead** | HTTP2 headers + protobuf framing | Raw bytes | **Pipes** |
+| **Throughput** | ~100K-500K msgs/sec | ~1M+ msgs/sec | **Pipes** |
+
+**Key Insight**: Unix pipes provide **10-50x faster interprocess communication** than gRPC for local process orchestration.
+
+### Real-World DStream Scenarios
+
+#### Scenario 1: Azure Activity Logs → Azure Service Bus
+```hcl
+task "activity-logs-to-servicebus" {
+  type = "providers"
+  
+  input {
+    provider_path = "./azure-activity-logs-provider"
+    config = {
+      subscription_id = "12345678-1234-1234-1234-123456789012"
+      resource_groups = ["production", "staging"]  
+      polling_interval = "30s"
+    }
+  }
+  
+  output {
+    provider_path = "./azure-servicebus-provider"
+    config = {
+      connection_string = "Endpoint=sb://..."
+      queue_name = "activity-logs"
+      batch_size = 100
+    }
+  }
+}
+```
+
+**Data Flow**:
+```
+Azure Activity Logs API → Input Provider → stdout → CLI → stdin → Output Provider → Service Bus Queue
+```
+
+**Testing Capability**:
+```bash
+# Test input provider independently:
+echo '{"subscription_id":"...","polling_interval":"30s"}' | ./azure-activity-logs-provider
+
+# Test output provider independently:  
+echo '{"connection_string":"...","queue_name":"test"}' | ./azure-servicebus-provider
+
+# Test full pipeline manually:
+echo '{"subscription_id":"..."}' | ./azure-activity-logs-provider | ./azure-servicebus-provider
+```
+
+#### Scenario 2: MS SQL CDC → Azure Data Factory
+```hcl
+task "mssql-cdc-to-adf" {
+  type = "providers"
+  
+  input {
+    provider_path = "./mssql-cdc-provider"
+    config = {
+      connection_string = "Server=sql.company.com;Database=Orders;..."
+      tables = ["Orders", "Customers", "OrderItems"]
+      cdc_start_lsn = "auto"
+      polling_interval = "5s"
+      batch_size = 1000
+    }
+  }
+  
+  output {
+    provider_path = "./azure-datafactory-provider"  
+    config = {
+      subscription_id = "12345678-1234-1234-1234-123456789012"
+      resource_group = "data-engineering"
+      factory_name = "company-adf"
+      pipeline_name = "ingest-cdc-changes"
+    }
+  }
+}
+```
+
+**High-Frequency CDC Example**:
+```bash
+# SQL Server CDC processing 10,000 changes/second:
+
+# With gRPC:
+10,000 msgs × 100μs latency = 1 second just in IPC overhead
++ Processing time = significant bottleneck
+
+# With Pipes:  
+10,000 msgs × 5μs latency = 50ms in IPC overhead
++ Processing time = IPC negligible
+```
+
+### Final Architecture Decision: Unix stdin/stdout
+
+**Decision**: DStream adopts **Unix stdin/stdout pipes** for independent provider orchestration.
+
+**Rationale**:
+1. **Superior IPC Performance**: 10-50x faster interprocess communication
+2. **Universal Language Support**: Every programming language supports stdin/stdout natively
+3. **Legendary Battle Testing**: 50+ years of production use in Unix systems
+4. **Perfect Alignment**: Matches DStream's vision as "Unix pipeline for data"
+5. **Developer Experience**: Trivial testing with shell commands
+6. **Operational Simplicity**: Standard Unix tooling (pipes, redirects, etc.)
+
+**Trade-offs Accepted**:
+- Text-based JSON parsing overhead vs binary protobuf (negligible for I/O-bound workloads)
+- Manual schema validation vs automatic protobuf validation
+- Simple sequential processing vs complex bidirectional communication
+
+**Implementation Model**:
+```bash
+# Each provider is a standalone binary:
+echo 'CONFIG_JSON' | ./input-provider | ./output-provider
+
+# CLI orchestrates the pipeline:
+dstream run task-name
+# → CLI launches input-provider and output-provider
+# → CLI pipes: input.stdout → output.stdin
+# → CLI handles process lifecycle and graceful shutdown
+```
+
+**This architectural decision enables DStream to fulfill its vision as a "Unix pipeline for data" with maximum simplicity, performance, and universal language support.**
+
 ## Current Architecture Status & Evolution Plan
 
 ### Background
@@ -468,6 +711,19 @@ This baseline must never be broken during development.
 ### Integration with DStream CLI
 
 The DStream CLI is a Go application located at `C:\Users\ameer.deen\progs\dstream` that serves as the host for .NET plugins. The integration works as follows:
+
+### Existing Go-based Providers
+
+**MSSQL CDC Provider**: There's already a working Go-based MSSQL CDC provider at `~/progs/dstream-ingester-mssql` ([GitHub](https://github.com/katasec/dstream-ingester-mssql)) that:
+- Uses HashiCorp go-plugin protocol over gRPC
+- Handles SQL Server Change Data Capture
+- Works with the current DStream CLI
+- Will continue to work alongside .NET providers (language-agnostic ecosystem)
+
+This means the initial .NET provider focus should be on:
+- **Testing providers** (counter input, console output)
+- **Complementary providers** (Azure Service Bus output)
+- **Validating cross-language compatibility** (Go input → .NET output)
 
 **Plugin Lifecycle:**
 1. Go CLI parses `dstream.hcl` configuration file
