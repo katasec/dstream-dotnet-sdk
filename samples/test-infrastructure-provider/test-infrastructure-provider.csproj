@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>TestInfraProvider</RootNamespace>
+    
+    <!-- Single-file deployment -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <PublishTrimmed>false</PublishTrimmed>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../sdk/Katasec.DStream.Abstractions/Katasec.DStream.Abstractions.csproj" />
+    <ProjectReference Include="../../sdk/Katasec.DStream.SDK.Core/Katasec.DStream.SDK.Core.csproj" />
+  </ItemGroup>
+
+</Project>
