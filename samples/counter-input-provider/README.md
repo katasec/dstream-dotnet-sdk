@@ -1,10 +1,74 @@
-# Counter Input Provider
+# Counter Input Provider Sample
 
-A sample **DStream input provider** that generates sequential counter data with timestamps. Perfect for testing output providers, validating data pipelines, and demonstrating the DStream .NET SDK.
+A sample **DStream input provider** that demonstrates clean architecture patterns for building input providers. Generates sequential counter data with timestamps via stdin/stdout communication - perfect for testing output providers, validating data pipelines, and learning the DStream .NET SDK.
 
-## Overview
+## 📁 File Structure
 
-This provider generates:
+```
+counter-input-provider/
+├── Program.cs    ← Top-level statement entry point (5 lines)
+├── Config.cs     ← Configuration class (CounterConfig)
+└── Reader.cs     ← Core data reading logic (ReadAsync implementation)
+```
+
+## 🎯 Clean Architecture Pattern
+
+This sample demonstrates **separation of concerns** - each file has a specific purpose:
+
+### 🚀 Program.cs - Entry Point
+**Purpose**: Bootstrap the provider with minimal ceremony
+```csharp
+using Katasec.DStream.SDK.Core;
+using CounterInputProvider;
+
+// Top-level program entry point
+await StdioProviderHost.RunInputProviderAsync<CounterInputProvider.CounterInputProvider, CounterInputProvider.CounterConfig>();
+```
+
+### ⚙️ Config.cs - Configuration
+**Purpose**: Define provider settings with JSON binding
+```csharp
+public sealed record CounterConfig
+{
+    /// <summary>Interval in milliseconds between counter increments</summary>
+    public int Interval { get; init; } = 1000;
+    
+    /// <summary>Maximum number of items to generate (0 = infinite)</summary>
+    public int MaxCount { get; init; } = 0;
+}
+```
+
+### 🔧 Reader.cs - Core Business Logic
+**Purpose**: Implement data generation logic  
+**Interface**: `IInputProvider` from `Katasec.DStream.Abstractions`
+
+```csharp
+public interface IInputProvider : IProvider
+{
+    IAsyncEnumerable<Envelope> ReadAsync(IPluginContext ctx, CancellationToken ct);
+}
+```
+
+**Why this interface?**
+- ✅ **Streaming data generation**: Returns `IAsyncEnumerable<Envelope>` for continuous data flow
+- ✅ **Envelope structure**: Wraps data + metadata for downstream processing
+- ✅ **Cancellation support**: Respects `CancellationToken` for graceful shutdown
+- ✅ **SDK integration**: Framework calls this method to get your data
+
+**Key method - `ReadAsync`**:
+```csharp
+public async IAsyncEnumerable<Envelope> ReadAsync(IPluginContext ctx, [EnumeratorCancellation] CancellationToken ct)
+{
+    // Your data generation logic here:
+    // - Generate data (counter, API calls, file reading, etc.)
+    // - Create Envelope with payload + metadata  
+    // - Use 'yield return' for streaming
+    // - Handle cancellation gracefully
+}
+```
+
+## 📊 What This Provider Generates
+
 - **Sequential numbers** (1, 2, 3, ...) with timestamps
 - **Configurable intervals** between increments
 - **Optional max count** for finite sequences
@@ -79,11 +143,32 @@ task "counter-demo" {
 }
 ```
 
-## Architecture
+## 📋 Development Checklist
+
+### For Input Providers (Data Generation):
+
+1. **✅ Create Config.cs** - Define your provider's configuration needs
+2. **✅ Inherit from `ProviderBase<TConfig>`** in Reader.cs
+3. **✅ Implement `IInputProvider`** interface
+4. **✅ Implement `ReadAsync` method** with proper `[EnumeratorCancellation]` attribute
+5. **✅ Use `yield return`** for streaming data generation
+6. **✅ Handle `CancellationToken`** for graceful shutdown
+7. **✅ Create rich metadata** for downstream processing
+8. **✅ Bootstrap with top-level statements** in Program.cs
+
+## 🎯 Architecture Benefits
 
 - **Type**: Input Provider (generates data)
-- **Protocol**: stdin/stdout JSON communication
+- **Protocol**: stdin/stdout JSON communication  
 - **Framework**: .NET 9.0 with DStream .NET SDK
 - **Runtime**: Self-contained executable (~68MB)
+- **Pattern**: Clean separation of concerns (config/business logic/entry point)
 
-This demonstrates how simple it is to create a DStream input provider - the complete implementation is ~50 lines of code thanks to the SDK infrastructure!
+### Key Benefits:
+1. **🧩 Clear Separation**: Configuration, business logic, and entry point are isolated
+2. **🔧 Maintainable**: Easy to modify data generation logic in Reader.cs
+3. **🧪 Testable**: Each component can be tested independently
+4. **📦 Reusable**: Pattern works for any input provider (APIs, databases, files)
+5. **⚡ Modern**: Uses latest C# patterns (top-level statements, records)
+
+This demonstrates how simple it is to create a DStream input provider with clean architecture - each file has a focused purpose and the SDK handles all the plumbing!
