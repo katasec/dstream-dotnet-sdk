@@ -1,25 +1,10 @@
-using System.Text.Json;
 using Katasec.DStream.Abstractions;
 using Katasec.DStream.SDK.Core;
 
 namespace ConsoleOutputProvider;
 
-// Configuration class for the console output provider
-public class ConsoleConfig
-{
-    /// <summary>
-    /// Output format: "simple" (default) or "json" or "structured"
-    /// </summary>
-    public string OutputFormat { get; set; } = "simple";
-    
-    /// <summary>
-    /// Demo infrastructure resource count for lifecycle testing
-    /// </summary>
-    public int ResourceCount { get; set; } = 3;
-}
-
-// Console output provider that demonstrates output + infrastructure lifecycle
-public class ConsoleOutputProvider : InfrastructureProviderBase<ConsoleConfig>, IOutputProvider
+// Infrastructure lifecycle methods - handles init/plan/status/destroy commands
+public partial class ConsoleOutputProvider : InfrastructureProviderBase<ConsoleConfig>, IOutputProvider
 {
     // Infrastructure lifecycle methods - override the OnXxx methods from base class
     protected override async Task<string[]> OnInitializeInfrastructureAsync(CancellationToken ct)
@@ -106,53 +91,5 @@ public class ConsoleOutputProvider : InfrastructureProviderBase<ConsoleConfig>, 
         
         await Console.Error.WriteLineAsync($"📈 Plan: Will create {Config.ResourceCount} demo resources (+{Config.ResourceCount} to add, 0 to change, 0 to destroy)");
         return (resources, changes);
-    }
-    
-    // Output provider implementation (for run command)
-    private static int _messageCount = 0;
-    
-    public async Task WriteAsync(IEnumerable<Envelope> batch, IPluginContext ctx, CancellationToken ct)
-    {
-        await Console.Error.WriteLineAsync($"[ConsoleOutputProvider] Processing batch of {batch.Count()} envelopes with format '{Config.OutputFormat}'");
-        
-        foreach (var envelope in batch)
-        {
-            if (ct.IsCancellationRequested) break;
-            
-            _messageCount++;
-            await OutputFormattedEnvelopeAsync(envelope, _messageCount);
-        }
-    }
-    
-    private async Task OutputFormattedEnvelopeAsync(Envelope envelope, int messageCount)
-    {
-        var format = Config.OutputFormat?.ToLower() ?? "simple";
-        
-        switch (format)
-        {
-            case "json":
-                var json = JsonSerializer.Serialize(new { envelope.Payload, envelope.Meta });
-                await Console.Out.WriteLineAsync(json);
-                break;
-                
-            case "structured":
-                var structured = JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
-                await Console.Out.WriteLineAsync($"--- Message #{messageCount} ---");
-                await Console.Out.WriteLineAsync(structured);
-                break;
-                
-            default: // "simple"
-                await Console.Out.WriteLineAsync($"Message #{messageCount}: {JsonSerializer.Serialize(envelope.Payload)}");
-                break;
-        }
-    }
-}
-
-// Main entry point
-public class Program
-{
-    public static async Task Main(string[] args)
-    {
-        await StdioProviderHost.RunProviderWithCommandAsync<ConsoleOutputProvider, ConsoleConfig>();
     }
 }
