@@ -1,17 +1,11 @@
-using Katasec.DStream.SDK.PluginHost;
 using Katasec.DStream.Abstractions;
-using HCLog.Net;
 using Katasec.DStream.SDK.Core;
-using Katasec.DStream.Provider.ConsoleOut; // Force assembly loading
 
-// Entry point for the plugin. 
-// A plugin has code (GenericCounterPlugin) and config (GenericCounterConfig).
-// and is run by the host (PluginHost).
+// Entry point for the modern stdin/stdout provider.
+// This provider reads configuration from stdin and outputs data to stdout.
+// No more gRPC plugin host - pure Unix pipeline approach.
 
-// Force console provider assembly to load
-_ = new ConsoleOutputProvider();
-
-await PluginHost.Run<GenericCounterPlugin, GenericCounterConfig>();
+await StdioProviderHost.RunInputProviderAsync<GenericCounterPlugin, GenericCounterConfig>();
 
 
 /// <summary>
@@ -41,22 +35,26 @@ public sealed class GenericCounterPlugin : ProviderBase<GenericCounterConfig>, I
     /// <returns></returns>
     public async IAsyncEnumerable<Envelope> ReadAsync(IPluginContext ctx, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
-        var hc = (HCLogger)ctx.Logger; // HCLogger from the host
-        hc.Info($"counter_start interval={Config.Interval}");
+        // Log to stderr (stdout is for data output)
+        await Console.Error.WriteLineAsync($"[GenericCounterPlugin] Starting counter with interval={Config.Interval}ms");
 
-        for (int seq = 0; !ct.IsCancellationRequested; seq++)
+        for (int seq = 1; !ct.IsCancellationRequested; seq++)
         {
             await Task.Delay(Config.Interval, ct);
-            seq++;
 
+            var data = new { value = seq, timestamp = DateTimeOffset.UtcNow };
             var meta = new Dictionary<string, object?>
             {
                 ["seq"] = seq,
-                ["source"] = "counter"
+                ["source"] = "generic-counter-plugin",
+                ["interval_ms"] = Config.Interval
             };
 
-            yield return new Envelope(seq, meta);
+            await Console.Error.WriteLineAsync($"[GenericCounterPlugin] Emitting counter value: {seq}");
+            yield return new Envelope(data, meta);
         }
+
+        await Console.Error.WriteLineAsync("[GenericCounterPlugin] Counter stopped");
     }
 }
 

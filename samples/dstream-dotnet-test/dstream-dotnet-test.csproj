@@ -24,13 +24,10 @@
     <None Remove="Makefile" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="HCLog.Net" Version="0.0.5" />
-  </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\sdk\Katasec.DStream.SDK.PluginHost\Katasec.DStream.SDK.PluginHost.csproj" />
-    <ProjectReference Include="..\..\providers\Katasec.DStream.Provider.Console\Katasec.DStream.Provider.Console.csproj" />
+    <ProjectReference Include="..\..\sdk\Katasec.DStream.Abstractions\Katasec.DStream.Abstractions.csproj" />
+    <ProjectReference Include="..\..\sdk\Katasec.DStream.SDK.Core\Katasec.DStream.SDK.Core.csproj" />
   </ItemGroup>
 
 </Project>
