@@ -1,0 +1,97 @@
+name: Publish to NuGet.org
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags (e.g., v1.0.0, v1.2.3-beta.1)
+
+env:
+  DOTNET_VERSION: '9.0.x'
+
+jobs:
+  publish:
+    name: Build and Publish to NuGet.org
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Get full history for version info
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    
+    - name: Extract version from tag
+      id: version
+      run: |
+        # Extract version from tag (remove 'v' prefix)
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Publishing version: $VERSION"
+    
+    - name: Update VERSION.txt
+      run: |
+        echo "${{ steps.version.outputs.VERSION }}" > VERSION.txt
+        cat VERSION.txt
+    
+    - name: Restore dependencies
+      run: dotnet restore dstream-dotnet-sdk.sln
+    
+    - name: Build solution
+      run: dotnet build dstream-dotnet-sdk.sln --configuration Release --no-restore
+    
+    - name: Run tests
+      run: dotnet test dstream-dotnet-sdk.sln --configuration Release --no-build --verbosity normal
+    
+    - name: Pack NuGet packages
+      run: |
+        dotnet pack sdk/Katasec.DStream.Abstractions/Katasec.DStream.Abstractions.csproj \
+          --configuration Release \
+          --no-build \
+          --output ./packages \
+          /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+        
+        dotnet pack sdk/Katasec.DStream.SDK.Core/Katasec.DStream.SDK.Core.csproj \
+          --configuration Release \
+          --no-build \
+          --output ./packages \
+          /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+    
+    - name: List generated packages
+      run: ls -la ./packages/
+    
+    - name: Publish to NuGet.org
+      run: |
+        dotnet nuget push ./packages/*.nupkg \
+          --api-key ${{ secrets.NUGET_API_KEY }} \
+          --source https://api.nuget.org/v3/index.json \
+          --skip-duplicate
+      env:
+        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: DStream .NET SDK ${{ steps.version.outputs.VERSION }}
+        body: |
+          ## DStream .NET SDK Release ${{ steps.version.outputs.VERSION }}
+          
+          ### 📦 Published Packages
+          - `Katasec.DStream.Abstractions` v${{ steps.version.outputs.VERSION }}
+          - `Katasec.DStream.SDK.Core` v${{ steps.version.outputs.VERSION }}
+          
+          ### 🚀 Installation
+          ```bash
+          dotnet add package Katasec.DStream.SDK.Core --version ${{ steps.version.outputs.VERSION }}
+          ```
+          
+          ### 📝 Changes
+          See commit history for detailed changes in this release.
+        draft: false
+        prerelease: ${{ contains(steps.version.outputs.VERSION, 'beta') || contains(steps.version.outputs.VERSION, 'alpha') || contains(steps.version.outputs.VERSION, 'rc') }}

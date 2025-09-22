@@ -4,6 +4,25 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    
+    <!-- NuGet Package Metadata -->
+    <PackageId>Katasec.DStream.SDK.Core</PackageId>
+    <Title>DStream SDK Core</Title>
+    <Description>Core SDK for building DStream data streaming providers. Includes ProviderBase, StdioProviderHost, and infrastructure provider support for creating Unix-style streaming data pipelines.</Description>
+    <Authors>Katasec</Authors>
+    <Company>Katasec</Company>
+    <Product>DStream</Product>
+    <Copyright>Copyright © Katasec $([System.DateTime]::Now.Year)</Copyright>
+    <PackageProjectUrl>https://github.com/katasec/dstream-dotnet-sdk</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/katasec/dstream-dotnet-sdk</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>streaming;data;providers;pipeline;unix;cdc;stdin;stdout</PackageTags>
+    <PackageReleaseNotes>See https://github.com/katasec/dstream-dotnet-sdk/releases for release notes.</PackageReleaseNotes>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>

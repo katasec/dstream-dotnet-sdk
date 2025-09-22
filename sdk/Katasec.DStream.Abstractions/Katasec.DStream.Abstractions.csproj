@@ -4,6 +4,25 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    
+    <!-- NuGet Package Metadata -->
+    <PackageId>Katasec.DStream.Abstractions</PackageId>
+    <Title>DStream Abstractions</Title>
+    <Description>Core interfaces and abstractions for the DStream data streaming platform. Provides IInputProvider, IOutputProvider, and IPluginContext interfaces for building streaming data providers.</Description>
+    <Authors>Katasec</Authors>
+    <Company>Katasec</Company>
+    <Product>DStream</Product>
+    <Copyright>Copyright © Katasec $([System.DateTime]::Now.Year)</Copyright>
+    <PackageProjectUrl>https://github.com/katasec/dstream-dotnet-sdk</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/katasec/dstream-dotnet-sdk</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>streaming;data;providers;pipeline;unix;cdc</PackageTags>
+    <PackageReleaseNotes>See https://github.com/katasec/dstream-dotnet-sdk/releases for release notes.</PackageReleaseNotes>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
 
 </Project>
